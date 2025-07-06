@@ -18,16 +18,37 @@ const LockerAutocomplete = ({
 
   useEffect(() => {
     const loadTerminals = async () => {
-      if (!ipcRenderer) {
-        // No mock data - only show real API data
-        setOptions([]);
-        return;
-      }
-
       setLoading(true);
       try {
-        // Always fetch all terminals, filtering is done client-side
-        const terminals = await ipcRenderer.invoke("get-all-terminals");
+        let terminals;
+
+        if (!ipcRenderer) {
+          // Browser mode: make direct API call
+          if (!process.env.PUDO_API_KEY) {
+            throw new Error("PUDO_API_KEY environment variable is not available in browser mode");
+          }
+          
+          const response = await fetch(
+            "https://api-pudo.co.za/api/v1/lockers-data",
+            {
+              method: "GET",
+              headers: {
+                Authorization: process.env.PUDO_API_KEY,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          terminals = await response.json();
+        } else {
+          // Electron mode: use IPC
+          terminals = await ipcRenderer.invoke("get-all-terminals");
+        }
 
         if (!terminals || !Array.isArray(terminals)) {
           console.error("Invalid terminals response:", terminals);
@@ -63,7 +84,7 @@ const LockerAutocomplete = ({
 
   // Filter options based on input value
   const filteredOptions = options.filter((option) => {
-    if (inputValue.length < 2) return true; // Show all when input is short
+    if (inputValue.length === 0) return true; // Show all when input is empty
     const searchTerm = inputValue.toLowerCase();
     return (
       option.terminal_id.toLowerCase().includes(searchTerm) ||
@@ -124,11 +145,7 @@ const LockerAutocomplete = ({
           </li>
         );
       }}
-      noOptionsText={
-        inputValue.length < 2
-          ? "Type at least 2 characters to search"
-          : "No lockers found"
-      }
+      noOptionsText="No lockers found"
     />
   );
 };
