@@ -105,12 +105,6 @@ const AppContent = () => {
             <ListItemText primary={item.label} />
           </ListItem>
         ))}
-        <ListItem button onClick={handleSignOut}>
-          <ListItemIcon>
-            <LogoutIcon />
-          </ListItemIcon>
-          <ListItemText primary="Sign Out" />
-        </ListItem>
       </List>
     </div>
   );

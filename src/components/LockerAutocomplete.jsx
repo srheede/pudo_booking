@@ -5,12 +5,29 @@ const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
   : null;
 
+// Cache for lockers data
+let lockersCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+// Cache management functions
+const clearLockersCache = () => {
+  lockersCache = null;
+  cacheTimestamp = null;
+};
+
+const isCacheValid = () => {
+  const now = Date.now();
+  return lockersCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION;
+};
+
 const LockerAutocomplete = ({
   value,
   onChange,
   label = "Select Locker",
   error,
   helperText,
+  forceRefresh = false,
 }) => {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -18,6 +35,12 @@ const LockerAutocomplete = ({
 
   useEffect(() => {
     const loadTerminals = async () => {
+      // Check if we have valid cached data (unless force refresh is requested)
+      if (!forceRefresh && isCacheValid()) {
+        setOptions(lockersCache);
+        return;
+      }
+
       setLoading(true);
       try {
         let terminals;
@@ -69,6 +92,10 @@ const LockerAutocomplete = ({
           longitude: locker.longitude,
         }));
 
+        // Cache the formatted options
+        lockersCache = formattedOptions;
+        cacheTimestamp = Date.now();
+
         setOptions(formattedOptions);
       } catch (error) {
         console.error("Error loading terminals:", error);
@@ -78,9 +105,9 @@ const LockerAutocomplete = ({
       }
     };
 
-    // Load all terminals on component mount
+    // Load all terminals on component mount or when forceRefresh changes
     loadTerminals();
-  }, []); // Empty dependency array - only run once on mount
+  }, [forceRefresh]); // Re-run when forceRefresh changes
 
   // Filter options based on input value
   const filteredOptions = options.filter((option) => {
@@ -151,3 +178,4 @@ const LockerAutocomplete = ({
 };
 
 export default LockerAutocomplete;
+export { clearLockersCache, isCacheValid };
