@@ -234,12 +234,29 @@ const BookingsPage = () => {
               payload
             );
           } else {
-            // Mock response for browser environment
-            shipmentResult = {
-              shipment_id: `MOCK_${Date.now()}`,
-              id: `MOCK_${Date.now()}`,
-              status: "created",
-            };
+            // Browser mode: make direct API call
+            if (!process.env.PUDO_API_KEY) {
+              throw new Error("PUDO_API_KEY not available in browser mode");
+            }
+
+            const response = await fetch(
+              "https://api-pudo.co.za/api/v1/shipments",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: process.env.PUDO_API_KEY,
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify(payload),
+              }
+            );
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            shipmentResult = await response.json();
           }
 
           // Save booking to Firebase
