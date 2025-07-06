@@ -25,6 +25,10 @@ import {
   bookingService,
   senderService,
 } from "../firebase/services";
+import {
+  clearLockersCache,
+  isCacheValid,
+} from "../components/LockerAutocomplete.jsx";
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
@@ -54,6 +58,7 @@ const BookingsPage = () => {
     customers: [],
   });
   const [sender, setSender] = useState(null);
+  const [lockersMap, setLockersMap] = useState({});
 
   useEffect(() => {
     loadData();
@@ -68,11 +73,57 @@ const BookingsPage = () => {
       ]);
       setCustomers(customersData);
       setSender(senderData);
+      await loadLockersData();
     } catch (error) {
       console.error("Error loading data:", error);
       showSnackbar("Error loading data", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLockersData = async () => {
+    try {
+      let terminals;
+
+      if (!ipcRenderer) {
+        // Browser mode: make direct API call
+        if (!process.env.PUDO_API_KEY) {
+          console.warn("PUDO_API_KEY not available in browser mode");
+          return;
+        }
+
+        const response = await fetch(
+          "https://api-pudo.co.za/api/v1/lockers-data",
+          {
+            method: "GET",
+            headers: {
+              Authorization: process.env.PUDO_API_KEY,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        terminals = await response.json();
+      } else {
+        // Electron mode: use IPC
+        terminals = await ipcRenderer.invoke("get-all-terminals");
+      }
+
+      if (terminals && Array.isArray(terminals)) {
+        const lockersMapping = {};
+        terminals.forEach((locker) => {
+          lockersMapping[locker.code] = locker.name;
+        });
+        setLockersMap(lockersMapping);
+      }
+    } catch (error) {
+      console.error("Error loading lockers data:", error);
     }
   };
 
@@ -277,7 +328,10 @@ const BookingsPage = () => {
       renderCell: (params) => {
         const customer = params.row;
         if (customer.deliveryType === "locker") {
-          return customer.lockerId || "Not set";
+          const lockerName = lockersMap[customer.lockerId];
+          return lockerName
+            ? `${customer.lockerId} - ${lockerName}`
+            : customer.lockerId || "Not set";
         } else {
           const address = customer.address;
           if (address) {
