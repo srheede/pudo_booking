@@ -13,8 +13,10 @@ import {
   FormControlLabel,
   Radio,
   Box,
+  Typography,
 } from "@mui/material";
 import LockerAutocomplete from "./LockerAutocomplete.jsx";
+import AddressAutocomplete from "./AddressAutocomplete.jsx";
 
 const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
   const [formData, setFormData] = useState({
@@ -29,10 +31,12 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
       city: "",
       province: "",
       postalCode: "",
+      fullAddress: "",
     },
   });
 
   const [errors, setErrors] = useState({});
+  const [showAddressDetails, setShowAddressDetails] = useState(false);
 
   useEffect(() => {
     if (customer) {
@@ -48,8 +52,16 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
           city: customer.address?.city || "",
           province: customer.address?.province || "",
           postalCode: customer.address?.postalCode || "",
+          fullAddress: customer.address?.fullAddress || "",
         },
       });
+      // Show address details if editing and there's address data
+      if (
+        customer.deliveryType === "address" &&
+        customer.address?.fullAddress
+      ) {
+        setShowAddressDetails(true);
+      }
     } else {
       setFormData({
         name: "",
@@ -63,8 +75,10 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
           city: "",
           province: "",
           postalCode: "",
+          fullAddress: "",
         },
       });
+      setShowAddressDetails(false);
     }
     setErrors({});
   }, [customer, open]);
@@ -107,6 +121,37 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         lockerId: "",
       }));
     }
+  };
+
+  const handleAddressChange = (addressData) => {
+    setFormData((prev) => ({
+      ...prev,
+      address: {
+        ...prev.address,
+        ...addressData,
+      },
+    }));
+
+    // Show address details after selection
+    if (addressData.fullAddress) {
+      setShowAddressDetails(true);
+    }
+
+    // Clear address errors
+    const addressErrors = [
+      "address.street",
+      "address.city",
+      "address.province",
+    ];
+    setErrors((prev) => {
+      const newErrors = { ...prev };
+      addressErrors.forEach((field) => {
+        if (newErrors[field]) {
+          delete newErrors[field];
+        }
+      });
+      return newErrors;
+    });
   };
 
   const validate = () => {
@@ -152,9 +197,11 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         city: "",
         province: "",
         postalCode: "",
+        fullAddress: "",
       },
     });
     setErrors({});
+    setShowAddressDetails(false);
     onClose();
   };
 
@@ -236,54 +283,78 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
             ) : (
               <>
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Street Address"
-                    value={formData.address.street}
-                    onChange={handleChange("address.street")}
+                  <AddressAutocomplete
+                    value={formData.address}
+                    onChange={handleAddressChange}
+                    label="Search Address"
                     error={!!errors["address.street"]}
                     helperText={errors["address.street"]}
                     required
                   />
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Suburb"
-                    value={formData.address.suburb}
-                    onChange={handleChange("address.suburb")}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="City"
-                    value={formData.address.city}
-                    onChange={handleChange("address.city")}
-                    error={!!errors["address.city"]}
-                    helperText={errors["address.city"]}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Province"
-                    value={formData.address.province}
-                    onChange={handleChange("address.province")}
-                    error={!!errors["address.province"]}
-                    helperText={errors["address.province"]}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Postal Code"
-                    value={formData.address.postalCode}
-                    onChange={handleChange("address.postalCode")}
-                  />
-                </Grid>
+
+                {showAddressDetails && (
+                  <>
+                    <Grid item xs={12}>
+                      <Typography
+                        variant="subtitle2"
+                        color="text.secondary"
+                        sx={{ mb: 1 }}
+                      >
+                        Address Details (you can edit these if needed):
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Street Address"
+                        value={formData.address.street}
+                        onChange={handleChange("address.street")}
+                        error={!!errors["address.street"]}
+                        helperText={errors["address.street"]}
+                        required
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Suburb"
+                        value={formData.address.suburb}
+                        onChange={handleChange("address.suburb")}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="City"
+                        value={formData.address.city}
+                        onChange={handleChange("address.city")}
+                        error={!!errors["address.city"]}
+                        helperText={errors["address.city"]}
+                        required
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Province"
+                        value={formData.address.province}
+                        onChange={handleChange("address.province")}
+                        error={!!errors["address.province"]}
+                        helperText={errors["address.province"]}
+                        required
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Postal Code"
+                        value={formData.address.postalCode}
+                        onChange={handleChange("address.postalCode")}
+                      />
+                    </Grid>
+                  </>
+                )}
               </>
             )}
           </Grid>

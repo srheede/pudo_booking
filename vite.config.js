@@ -1,6 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { config, getAuthHeaders } from "./src/config.js";
+import config from "./src/config.json";
+
+// Helper function to get Authorization header
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+});
 
 export default defineConfig({
   plugins: [react()],

@@ -29,7 +29,14 @@ import {
   clearLockersCache,
   isCacheValid,
 } from "../components/LockerAutocomplete.jsx";
-import { config, getAuthHeaders } from "../config";
+import config from "../config.json";
+
+// Helper function to get Authorization header
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+});
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer

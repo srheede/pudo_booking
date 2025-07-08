@@ -15,7 +15,14 @@ import {
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { Add, Edit, Delete } from "@mui/icons-material";
-import { config, getAuthHeaders } from "../config";
+import config from "../config.json";
+
+// Helper function to get Authorization header
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+});
 import { customerService } from "../firebase/services";
 import CustomerForm from "../components/CustomerForm.jsx";
 import LockerAutocomplete, {

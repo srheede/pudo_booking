@@ -2,7 +2,14 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
-const { config, getAuthHeaders } = require("./config");
+const config = require("./config.json");
+
+// Helper function to get Authorization header
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+});
 
 let mainWindow;
 
