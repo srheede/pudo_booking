@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { Add, Edit, Delete } from "@mui/icons-material";
-import config from "../config.json";
+import config from "../../config.json";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({

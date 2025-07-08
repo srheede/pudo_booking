@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import config from "./src/config.json";
+import config from "./config.json";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({

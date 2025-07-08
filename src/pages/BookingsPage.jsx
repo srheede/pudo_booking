@@ -29,7 +29,7 @@ import {
   clearLockersCache,
   isCacheValid,
 } from "../components/LockerAutocomplete.jsx";
-import config from "../config.json";
+import config from "../../config.json";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({

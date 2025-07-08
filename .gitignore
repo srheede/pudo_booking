@@ -119,7 +119,7 @@ firestore-debug.log
 *.local
 
 # Configuration files
-src/config.json
+config.json
 
 # Database files
 *.db

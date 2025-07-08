@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, CircularProgress } from "@mui/material";
-import config from "../config.json";
+import config from "../../config.json";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({

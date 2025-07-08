@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TextField, Box, Alert } from "@mui/material";
-import config from "../config.json";
+import config from "../../config.json";
 
 const AddressAutocomplete = ({
   value,

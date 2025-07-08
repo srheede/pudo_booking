@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
-const config = require("./config.json");
+const config = require("../config.json");
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({
