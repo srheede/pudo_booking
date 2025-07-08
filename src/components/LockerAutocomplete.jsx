@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, CircularProgress } from "@mui/material";
+import { config, getAuthHeaders } from "../config";
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
@@ -18,7 +19,9 @@ const clearLockersCache = () => {
 
 const isCacheValid = () => {
   const now = Date.now();
-  return lockersCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION;
+  return (
+    lockersCache && cacheTimestamp && now - cacheTimestamp < CACHE_DURATION
+  );
 };
 
 const LockerAutocomplete = ({
@@ -47,21 +50,10 @@ const LockerAutocomplete = ({
 
         if (!ipcRenderer) {
           // Browser mode: make direct API call
-          if (!process.env.PUDO_API_KEY) {
-            throw new Error("PUDO_API_KEY environment variable is not available in browser mode");
-          }
-          
-          const response = await fetch(
-            "https://api-pudo.co.za/api/v1/lockers-data",
-            {
-              method: "GET",
-              headers: {
-                Authorization: process.env.PUDO_API_KEY,
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-            }
-          );
+          const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
+            method: "GET",
+            headers: getAuthHeaders(),
+          });
 
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);

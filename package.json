@@ -4,7 +4,7 @@
   "description": "Desktop app for managing Pudo bookings and customers",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "NODE_ENV=production electron .",
     "dev": "concurrently \"npm run dev-react\" \"wait-on http://localhost:3000 && electron .\"",
     "dev-react": "vite",
     "build": "vite build",
@@ -49,6 +49,7 @@
     "files": [
       "build/**/*",
       "src/main.js",
+      "src/config.js",
       "node_modules/**/*"
     ],
     "mac": {

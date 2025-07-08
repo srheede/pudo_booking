@@ -1,7 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const axios = require("axios");
-require("dotenv").config();
+const fs = require("fs");
+const { config, getAuthHeaders } = require("./config");
 
 let mainWindow;
 
@@ -18,14 +19,17 @@ function createWindow() {
     icon: path.join(__dirname, "../assets/icon.png"),
   });
 
-  // Load the app
-  const isDev = process.env.NODE_ENV === "development";
+  // Load the app - always use built files for consistency
+  const buildPath = path.join(__dirname, "../build/index.html");
+  const buildExists = fs.existsSync(buildPath);
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:3000");
-    mainWindow.webContents.openDevTools();
+  if (buildExists) {
+    // Always use built files when they exist
+    mainWindow.loadFile(buildPath);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../build/index.html"));
+    // Error case - no build files found
+    console.error("No build files found. Please run 'npm run build' first.");
+    app.quit();
   }
 
   mainWindow.on("closed", () => {
@@ -51,16 +55,9 @@ app.on("activate", () => {
 // IPC handlers for Pudo API
 ipcMain.handle("search-terminals", async (event, query) => {
   try {
-    const response = await axios.get(
-      `https://api-pudo.co.za/api/v1/lockers-data`,
-      {
-        headers: {
-          Authorization: process.env.PUDO_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      }
-    );
+    const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
+      headers: getAuthHeaders(),
+    });
 
     // Filter lockers based on query if provided
     let lockers = response.data;
@@ -84,14 +81,10 @@ ipcMain.handle("search-terminals", async (event, query) => {
 ipcMain.handle("create-shipment", async (event, payload) => {
   try {
     const response = await axios.post(
-      "https://api-pudo.co.za/api/v1/shipments",
+      `${config.API_BASE_URL}/shipments`,
       payload,
       {
-        headers: {
-          Authorization: process.env.PUDO_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: getAuthHeaders(),
       }
     );
     return response.data;
@@ -103,16 +96,9 @@ ipcMain.handle("create-shipment", async (event, payload) => {
 
 ipcMain.handle("get-all-terminals", async (event) => {
   try {
-    const response = await axios.get(
-      "https://api-pudo.co.za/api/v1/lockers-data",
-      {
-        headers: {
-          Authorization: process.env.PUDO_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      }
-    );
+    const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
+      headers: getAuthHeaders(),
+    });
 
     return response.data;
   } catch (error) {

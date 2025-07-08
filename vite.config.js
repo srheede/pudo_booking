@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { config, getAuthHeaders } from "./src/config.js";
 
 export default defineConfig({
   plugins: [react()],
   base: "./",
   define: {
-    "process.env.PUDO_API_KEY": JSON.stringify(process.env.PUDO_API_KEY),
+    "process.env.PUDO_API_KEY": JSON.stringify(getAuthHeaders().Authorization),
   },
   build: {
     outDir: "build",

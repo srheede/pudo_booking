@@ -29,6 +29,7 @@ import {
   clearLockersCache,
   isCacheValid,
 } from "../components/LockerAutocomplete.jsx";
+import { config, getAuthHeaders } from "../config";
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
@@ -88,22 +89,10 @@ const BookingsPage = () => {
 
       if (!ipcRenderer) {
         // Browser mode: make direct API call
-        if (!process.env.PUDO_API_KEY) {
-          console.warn("PUDO_API_KEY not available in browser mode");
-          return;
-        }
-
-        const response = await fetch(
-          "https://api-pudo.co.za/api/v1/lockers-data",
-          {
-            method: "GET",
-            headers: {
-              Authorization: process.env.PUDO_API_KEY,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-          }
-        );
+        const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
+          method: "GET",
+          headers: getAuthHeaders(),
+        });
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -235,22 +224,11 @@ const BookingsPage = () => {
             );
           } else {
             // Browser mode: make direct API call
-            if (!process.env.PUDO_API_KEY) {
-              throw new Error("PUDO_API_KEY not available in browser mode");
-            }
-
-            const response = await fetch(
-              "https://api-pudo.co.za/api/v1/shipments",
-              {
-                method: "POST",
-                headers: {
-                  Authorization: process.env.PUDO_API_KEY,
-                  "Content-Type": "application/json",
-                  Accept: "application/json",
-                },
-                body: JSON.stringify(payload),
-              }
-            );
+            const response = await fetch(`${config.API_BASE_URL}/shipments`, {
+              method: "POST",
+              headers: getAuthHeaders(),
+              body: JSON.stringify(payload),
+            });
 
             if (!response.ok) {
               throw new Error(`HTTP error! status: ${response.status}`);

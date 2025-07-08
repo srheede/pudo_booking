@@ -15,8 +15,13 @@ import {
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { Add, Edit, Delete } from "@mui/icons-material";
+import { config, getAuthHeaders } from "../config";
 import { customerService } from "../firebase/services";
 import CustomerForm from "../components/CustomerForm.jsx";
+import LockerAutocomplete, {
+  clearLockersCache,
+  isCacheValid,
+} from "../components/LockerAutocomplete.jsx";
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
@@ -60,22 +65,10 @@ const CustomersPage = () => {
 
       if (!ipcRenderer) {
         // Browser mode: make direct API call
-        if (!process.env.PUDO_API_KEY) {
-          console.warn("PUDO_API_KEY not available in browser mode");
-          return;
-        }
-
-        const response = await fetch(
-          "https://api-pudo.co.za/api/v1/lockers-data",
-          {
-            method: "GET",
-            headers: {
-              Authorization: process.env.PUDO_API_KEY,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-          }
-        );
+        const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
+          method: "GET",
+          headers: getAuthHeaders(),
+        });
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
