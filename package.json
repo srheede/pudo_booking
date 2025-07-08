@@ -50,6 +50,7 @@
       "build/**/*",
       "src/main.js",
       "src/config.js",
+      "config.json",
       "node_modules/**/*"
     ],
     "mac": {
