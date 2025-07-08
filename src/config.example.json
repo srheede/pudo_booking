@@ -1,0 +1,12 @@
+{
+  "PUDO_API_KEY": "your_pudo_api_key_here",
+  "API_BASE_URL": "https://api-pudo.co.za/api/v1",
+  "GOOGLE_MAPS_API_KEY": "your_google_maps_api_key_here",
+  "FIREBASE": {
+    "apiKey": "your_firebase_api_key_here",
+    "authDomain": "your_project.firebaseapp.com",
+    "projectId": "your_project_id",
+    "messagingSenderId": "your_messaging_sender_id",
+    "appId": "your_app_id"
+  }
+}

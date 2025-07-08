@@ -118,6 +118,9 @@ firestore-debug.log
 # Local development
 *.local
 
+# Configuration files
+src/config.json
+
 # Database files
 *.db
 *.sqlite
