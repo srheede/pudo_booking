@@ -13,10 +13,12 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Switch,
 } from "@mui/material";
 import { Save } from "@mui/icons-material";
 import { senderService } from "../firebase/services";
 import LockerAutocomplete from "../components/LockerAutocomplete.jsx";
+import AddressAutocomplete from "../components/AddressAutocomplete.jsx";
 
 const SenderPage = () => {
   const [formData, setFormData] = useState({
@@ -31,12 +33,15 @@ const SenderPage = () => {
       city: "",
       province: "",
       postalCode: "",
+      fullAddress: "",
     },
   });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [manualAddressMode, setManualAddressMode] = useState(false);
+  const [showAddressDetails, setShowAddressDetails] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -64,8 +69,17 @@ const SenderPage = () => {
             city: senderData.address?.city || "",
             province: senderData.address?.province || "",
             postalCode: senderData.address?.postalCode || "",
+            fullAddress: senderData.address?.fullAddress || "",
           },
         });
+
+        // Show address details if there's existing address data
+        if (
+          senderData.deliveryType === "address" &&
+          senderData.address?.fullAddress
+        ) {
+          setShowAddressDetails(true);
+        }
       }
     } catch (error) {
       console.error("Error loading sender data:", error);
@@ -116,6 +130,50 @@ const SenderPage = () => {
         ...prev,
         lockerId: "",
       }));
+    }
+  };
+
+  const handleAddressChange = (addressData) => {
+    setFormData((prev) => ({
+      ...prev,
+      address: {
+        ...prev.address,
+        ...addressData,
+      },
+    }));
+
+    // Show address details after selection
+    if (addressData.fullAddress) {
+      setShowAddressDetails(true);
+    }
+
+    // Clear address errors
+    const addressErrors = [
+      "address.street",
+      "address.city",
+      "address.province",
+    ];
+    setErrors((prev) => {
+      const newErrors = { ...prev };
+      addressErrors.forEach((field) => {
+        if (newErrors[field]) {
+          delete newErrors[field];
+        }
+      });
+      return newErrors;
+    });
+  };
+
+  const handleManualAddressToggle = (event) => {
+    setManualAddressMode(event.target.checked);
+    if (event.target.checked) {
+      // When switching to manual mode, show address details
+      setShowAddressDetails(true);
+    } else {
+      // When switching back to autocomplete, hide address details unless there's already address data
+      if (!formData.address.fullAddress) {
+        setShowAddressDetails(false);
+      }
     }
   };
 
@@ -262,54 +320,93 @@ const SenderPage = () => {
           ) : (
             <>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Street Address"
-                  value={formData.address.street}
-                  onChange={handleChange("address.street")}
-                  error={!!errors["address.street"]}
-                  helperText={errors["address.street"]}
-                  required
+                {!manualAddressMode ? (
+                  <AddressAutocomplete
+                    value={formData.address}
+                    onChange={handleAddressChange}
+                    label="Search Address"
+                    error={!!errors["address.street"]}
+                    helperText={errors["address.street"]}
+                    required
+                  />
+                ) : null}
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={manualAddressMode}
+                      onChange={handleManualAddressToggle}
+                      color="primary"
+                    />
+                  }
+                  label="Enter address manually"
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Suburb"
-                  value={formData.address.suburb}
-                  onChange={handleChange("address.suburb")}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="City"
-                  value={formData.address.city}
-                  onChange={handleChange("address.city")}
-                  error={!!errors["address.city"]}
-                  helperText={errors["address.city"]}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Province"
-                  value={formData.address.province}
-                  onChange={handleChange("address.province")}
-                  error={!!errors["address.province"]}
-                  helperText={errors["address.province"]}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Postal Code"
-                  value={formData.address.postalCode}
-                  onChange={handleChange("address.postalCode")}
-                />
-              </Grid>
+
+              {showAddressDetails && (
+                <>
+                  <Grid item xs={12}>
+                    <Typography
+                      variant="subtitle2"
+                      color="text.secondary"
+                      sx={{ mb: 1 }}
+                    >
+                      Address Details (you can edit these if needed):
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Street Address"
+                      value={formData.address.street}
+                      onChange={handleChange("address.street")}
+                      error={!!errors["address.street"]}
+                      helperText={errors["address.street"]}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Suburb"
+                      value={formData.address.suburb}
+                      onChange={handleChange("address.suburb")}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="City"
+                      value={formData.address.city}
+                      onChange={handleChange("address.city")}
+                      error={!!errors["address.city"]}
+                      helperText={errors["address.city"]}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Province"
+                      value={formData.address.province}
+                      onChange={handleChange("address.province")}
+                      error={!!errors["address.province"]}
+                      helperText={errors["address.province"]}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Postal Code"
+                      value={formData.address.postalCode}
+                      onChange={handleChange("address.postalCode")}
+                    />
+                  </Grid>
+                </>
+              )}
             </>
           )}
         </Grid>
