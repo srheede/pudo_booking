@@ -14,6 +14,7 @@ import {
   Radio,
   Box,
   Typography,
+  Switch,
 } from "@mui/material";
 import LockerAutocomplete from "./LockerAutocomplete.jsx";
 import AddressAutocomplete from "./AddressAutocomplete.jsx";
@@ -37,6 +38,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
 
   const [errors, setErrors] = useState({});
   const [showAddressDetails, setShowAddressDetails] = useState(false);
+  const [manualAddressMode, setManualAddressMode] = useState(false);
 
   useEffect(() => {
     if (customer) {
@@ -79,6 +81,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         },
       });
       setShowAddressDetails(false);
+      setManualAddressMode(false);
     }
     setErrors({});
   }, [customer, open]);
@@ -154,6 +157,19 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
     });
   };
 
+  const handleManualAddressToggle = (event) => {
+    setManualAddressMode(event.target.checked);
+    if (event.target.checked) {
+      // When switching to manual mode, show address details
+      setShowAddressDetails(true);
+    } else {
+      // When switching back to autocomplete, hide address details unless there's already address data
+      if (!formData.address.fullAddress) {
+        setShowAddressDetails(false);
+      }
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -202,6 +218,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
     });
     setErrors({});
     setShowAddressDetails(false);
+    setManualAddressMode(false);
     onClose();
   };
 
@@ -283,13 +300,28 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
             ) : (
               <>
                 <Grid item xs={12}>
-                  <AddressAutocomplete
-                    value={formData.address}
-                    onChange={handleAddressChange}
-                    label="Search Address"
-                    error={!!errors["address.street"]}
-                    helperText={errors["address.street"]}
-                    required
+                  {!manualAddressMode ? (
+                    <AddressAutocomplete
+                      value={formData.address}
+                      onChange={handleAddressChange}
+                      label="Search Address"
+                      error={!!errors["address.street"]}
+                      helperText={errors["address.street"]}
+                      required
+                    />
+                  ) : null}
+                </Grid>
+
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={manualAddressMode}
+                        onChange={handleManualAddressToggle}
+                        color="primary"
+                      />
+                    }
+                    label="Enter address manually"
                   />
                 </Grid>
 
