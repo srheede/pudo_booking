@@ -337,8 +337,8 @@ const BookingsPage = () => {
         } else {
           const address = customer.address;
           if (address) {
-            return `${address.street || ""}, ${address.city || ""}, ${
-              address.province || ""
+            return `${address.street || ""}, ${address.suburb || ""}, ${
+              address.city || ""
             }`.replace(/^,\s*|,\s*$/g, "");
           }
           return "Not set";
