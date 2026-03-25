@@ -15,6 +15,7 @@ import {
   Divider,
   Grid,
   CircularProgress,
+  LinearProgress,
   Tooltip,
   Stack,
 } from "@mui/material";
@@ -28,6 +29,7 @@ import {
   Phone,
   Email,
   Block,
+  Download,
 } from "@mui/icons-material";
 import { bookingService } from "../firebase/services";
 import config from "../../config.json";
@@ -107,6 +109,9 @@ const ShipmentsPage = () => {
     message: "",
     severity: "success",
   });
+
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [downloading, setDownloading] = useState({ active: false, current: 0, total: 0 });
 
   useEffect(() => {
     loadBookings();
@@ -258,6 +263,60 @@ const ShipmentsPage = () => {
     }
   };
 
+  const handleDownloadLabels = async () => {
+    const selected = bookings.filter((b) => selectedIds.includes(b.id));
+    if (!selected.length) return;
+
+    setDownloading({ active: true, current: 0, total: selected.length });
+
+    let successCount = 0;
+    const errors = [];
+
+    for (let i = 0; i < selected.length; i++) {
+      const booking = selected[i];
+      setDownloading((prev) => ({ ...prev, current: i + 1 }));
+
+      const shipmentId = booking.pudoRef;
+      const trackingRef =
+        booking.shipmentData?.custom_tracking_reference || String(shipmentId);
+
+      try {
+        if (ipcRenderer) {
+          await ipcRenderer.invoke("download-waybill", { shipmentId, trackingRef });
+        } else {
+          // Browser fallback: open the signed URL in a new tab
+          const res = await fetch(
+            `https://api-pudo.co.za/generate/waybill/${shipmentId}?api_key=${config.PUDO_API_KEY}`
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json().catch(() => res.text());
+          const url = typeof data === "string" ? data.trim() : data?.url || data?.link;
+          if (url) window.open(url, "_blank");
+        }
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to download label for ${trackingRef}:`, err);
+        errors.push(trackingRef);
+      }
+    }
+
+    setDownloading({ active: false, current: 0, total: 0 });
+
+    if (errors.length === 0) {
+      showSnackbar(
+        `${successCount} label${successCount !== 1 ? "s" : ""} downloaded to your Downloads folder`,
+        "success"
+      );
+    } else if (successCount > 0) {
+      showSnackbar(
+        `${successCount} downloaded; failed: ${errors.join(", ")}`,
+        "warning"
+      );
+    } else {
+      showSnackbar(`Failed to download labels: ${errors.join(", ")}`, "error");
+    }
+  };
+
   const columns = [
     {
       field: "pudoRef",
@@ -387,6 +446,21 @@ const ShipmentsPage = () => {
               Syncing with PUDO…
             </Typography>
           )}
+          {selectedIds.length > 0 && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={
+                downloading.active ? <CircularProgress size={16} color="inherit" /> : <Download />
+              }
+              onClick={handleDownloadLabels}
+              disabled={downloading.active}
+            >
+              {downloading.active
+                ? `Downloading ${downloading.current}/${downloading.total}…`
+                : `Download Label${selectedIds.length !== 1 ? "s" : ""} (${selectedIds.length})`}
+            </Button>
+          )}
           <Button
             variant="outlined"
             startIcon={loading ? <CircularProgress size={16} /> : <Refresh />}
@@ -398,6 +472,18 @@ const ShipmentsPage = () => {
         </Box>
       </Box>
 
+      {downloading.active && (
+        <Box sx={{ mb: 2 }}>
+          <LinearProgress
+            variant="determinate"
+            value={(downloading.current / downloading.total) * 100}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+            Downloading label {downloading.current} of {downloading.total}…
+          </Typography>
+        </Box>
+      )}
+
       <Paper sx={{ height: 620, width: "100%" }}>
         <DataGrid
           rows={bookings}
@@ -407,7 +493,10 @@ const ShipmentsPage = () => {
           initialState={{
             pagination: { paginationModel: { page: 0, pageSize: 10 } },
           }}
+          checkboxSelection
           disableRowSelectionOnClick
+          rowSelectionModel={selectedIds}
+          onRowSelectionModelChange={(newSelection) => setSelectedIds(newSelection)}
           sx={{ "& .MuiDataGrid-cell": { alignItems: "center" } }}
         />
       </Paper>

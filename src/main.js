@@ -1,8 +1,11 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
 const config = require("../config.json");
+
+const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
+const STICKER_BASE_URL = "https://api-pudo.co.za/generate/sticker";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({
@@ -163,6 +166,47 @@ ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
     return response.data;
   } catch (error) {
     console.error("Error cancelling shipment:", error);
+    throw error;
+  }
+});
+
+// Download the official PUDO waybill PDF for a shipment.
+// The PUDO API returns a signed S3 URL; we fetch the PDF binary and save it
+// to the user's Downloads folder, then reveal it in Finder/Explorer.
+ipcMain.handle("download-waybill", async (event, { shipmentId, trackingRef }) => {
+  try {
+    // Step 1: get signed S3 URL from PUDO
+    const urlResponse = await axios.get(`${WAYBILL_BASE_URL}/${shipmentId}`, {
+      params: { api_key: config.PUDO_API_KEY },
+    });
+
+    // The response may be a plain URL string or an object with a url/link field
+    let signedUrl;
+    if (typeof urlResponse.data === "string") {
+      signedUrl = urlResponse.data.trim();
+    } else if (urlResponse.data?.url) {
+      signedUrl = urlResponse.data.url;
+    } else if (urlResponse.data?.link) {
+      signedUrl = urlResponse.data.link;
+    } else {
+      throw new Error("Unexpected response format from waybill endpoint: " + JSON.stringify(urlResponse.data));
+    }
+
+    // Step 2: download the PDF binary
+    const pdfResponse = await axios.get(signedUrl, { responseType: "arraybuffer" });
+
+    // Step 3: save to Downloads folder
+    const downloadsPath = app.getPath("downloads");
+    const filename = `${trackingRef || shipmentId}.pdf`;
+    const filepath = path.join(downloadsPath, filename);
+    fs.writeFileSync(filepath, Buffer.from(pdfResponse.data));
+
+    // Step 4: reveal in file manager
+    shell.showItemInFolder(filepath);
+
+    return { success: true, filepath, filename };
+  } catch (error) {
+    console.error("Error downloading waybill:", error);
     throw error;
   }
 });
