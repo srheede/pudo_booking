@@ -114,6 +114,18 @@ ipcMain.handle("get-all-terminals", async (event) => {
   }
 });
 
+ipcMain.handle("get-all-shipments", async (event) => {
+  try {
+    const response = await axios.get(`${config.API_BASE_URL}/shipments`, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error getting all shipments:", error);
+    throw error;
+  }
+});
+
 ipcMain.handle("get-shipment", async (event, shipmentId) => {
   try {
     const response = await axios.get(
@@ -143,8 +155,9 @@ ipcMain.handle("update-shipment", async (event, { shipmentId, payload }) => {
 
 ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
   try {
-    const response = await axios.delete(
+    const response = await axios.put(
       `${config.API_BASE_URL}/shipments/${shipmentId}`,
+      { status: "cancelled" },
       { headers: getAuthHeaders() }
     );
     return response.data;

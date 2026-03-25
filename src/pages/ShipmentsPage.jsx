@@ -14,26 +14,20 @@ import {
   Snackbar,
   Divider,
   Grid,
-  TextField,
   CircularProgress,
   Tooltip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Stack,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import {
   Visibility,
-  Edit,
-  Delete,
   Refresh,
   LocalShipping,
   Person,
   Place,
   Phone,
   Email,
+  Block,
 } from "@mui/icons-material";
 import { bookingService } from "../firebase/services";
 import config from "../../config.json";
@@ -50,24 +44,21 @@ const ipcRenderer = window.require
 
 const STATUS_CONFIG = {
   created: { label: "Created", color: "info" },
+  "deposit-pending": { label: "Pending", color: "default" },
+  "collection-pending": { label: "Pending", color: "default" },
+  pending: { label: "Pending", color: "default" },
   collected: { label: "Collected", color: "warning" },
   "in-transit": { label: "In Transit", color: "primary" },
   in_transit: { label: "In Transit", color: "primary" },
+  "out-for-delivery": { label: "Out for Delivery", color: "primary" },
   delivered: { label: "Delivered", color: "success" },
+  "delivery-failed-attempt": { label: "Failed Attempt", color: "error" },
+  "return-in-transit": { label: "Return in Transit", color: "warning" },
   cancelled: { label: "Cancelled", color: "error" },
   canceled: { label: "Cancelled", color: "error" },
+  voided: { label: "Cancelled", color: "error" },
   failed: { label: "Failed", color: "error" },
-  pending: { label: "Pending", color: "default" },
 };
-
-const LOCAL_STATUSES = [
-  "created",
-  "collected",
-  "in-transit",
-  "delivered",
-  "cancelled",
-  "failed",
-];
 
 const formatAddress = (addr) => {
   if (!addr) return "N/A";
@@ -95,6 +86,7 @@ const getStatusConfig = (status) =>
 const ShipmentsPage = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const [viewDialog, setViewDialog] = useState({
     open: false,
@@ -104,23 +96,10 @@ const ShipmentsPage = () => {
     apiError: null,
   });
 
-  const [editDialog, setEditDialog] = useState({
+  const [cancelDialog, setCancelDialog] = useState({
     open: false,
     booking: null,
-    saving: false,
-  });
-  const [editForm, setEditForm] = useState({
-    status: "created",
-    notes: "",
-    specialInstructionsCollection: "",
-    specialInstructionsDelivery: "",
-  });
-
-  const [deleteDialog, setDeleteDialog] = useState({
-    open: false,
-    booking: null,
-    deleting: false,
-    action: null,
+    cancelling: false,
   });
 
   const [snackbar, setSnackbar] = useState({
@@ -138,11 +117,54 @@ const ShipmentsPage = () => {
       setLoading(true);
       const data = await bookingService.getAll();
       setBookings(data);
+      // Sync live PUDO statuses in the background after loading local records
+      syncPudoStatuses(data);
     } catch (error) {
       console.error("Error loading bookings:", error);
       showSnackbar("Error loading shipments", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncPudoStatuses = async (localBookings) => {
+    if (!localBookings?.length) return;
+    setSyncing(true);
+    try {
+      let pudoShipments;
+      if (ipcRenderer) {
+        pudoShipments = await ipcRenderer.invoke("get-all-shipments");
+      } else {
+        const response = await fetch(`${config.API_BASE_URL}/shipments`, {
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        pudoShipments = await response.json();
+      }
+
+      if (!Array.isArray(pudoShipments)) return;
+
+      // Build map: numeric PUDO shipment id → live status
+      const pudoStatusMap = {};
+      pudoShipments.forEach((s) => {
+        if (s.id != null) pudoStatusMap[String(s.id)] = s.status;
+      });
+
+      // Apply live statuses; persist any changes back to Firestore
+      const updated = localBookings.map((booking) => {
+        const liveStatus = pudoStatusMap[String(booking.pudoRef)];
+        if (liveStatus && liveStatus !== booking.status) {
+          bookingService.update(booking.id, { status: liveStatus }).catch(console.error);
+          return { ...booking, status: liveStatus };
+        }
+        return booking;
+      });
+
+      setBookings(updated);
+    } catch (error) {
+      console.error("Error syncing PUDO statuses:", error);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -195,123 +217,60 @@ const ShipmentsPage = () => {
     }
   };
 
-  const handleEdit = (booking) => {
-    const sd = booking.shipmentData || {};
-    setEditForm({
-      status: booking.status || "created",
-      notes: booking.notes || "",
-      specialInstructionsCollection: sd.special_instructions_collection || "",
-      specialInstructionsDelivery: sd.special_instructions_delivery || "",
-    });
-    setEditDialog({ open: true, booking, saving: false });
+  const handleOpenCancel = (booking) => {
+    setCancelDialog({ open: true, booking, cancelling: false });
   };
 
-  const handleSaveEdit = async () => {
-    const { booking } = editDialog;
-    setEditDialog((prev) => ({ ...prev, saving: true }));
-    try {
-      await bookingService.update(booking.id, {
-        status: editForm.status,
-        notes: editForm.notes,
-        shipmentData: {
-          ...booking.shipmentData,
-          special_instructions_collection: editForm.specialInstructionsCollection,
-          special_instructions_delivery: editForm.specialInstructionsDelivery,
-        },
-      });
+  const handleConfirmCancel = async () => {
+    const { booking } = cancelDialog;
+    setCancelDialog((prev) => ({ ...prev, cancelling: true }));
 
-      if (booking.pudoRef) {
-        try {
-          const updatePayload = {
-            special_instructions_collection: editForm.specialInstructionsCollection,
-            special_instructions_delivery: editForm.specialInstructionsDelivery,
-          };
-          if (ipcRenderer) {
-            await ipcRenderer.invoke("update-shipment", {
-              shipmentId: booking.pudoRef,
-              payload: updatePayload,
-            });
-          } else {
-            await fetch(`${config.API_BASE_URL}/shipments/${booking.pudoRef}`, {
-              method: "PUT",
-              headers: getAuthHeaders(),
-              body: JSON.stringify(updatePayload),
-            });
+    try {
+      // Call PUDO API: PUT /shipments/{id} with status cancelled
+      if (ipcRenderer) {
+        await ipcRenderer.invoke("cancel-shipment", booking.pudoRef);
+      } else {
+        const response = await fetch(
+          `${config.API_BASE_URL}/shipments/${booking.pudoRef}`,
+          {
+            method: "PUT",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status: "cancelled" }),
           }
-        } catch (apiError) {
-          console.warn("PUDO API update failed (local changes saved):", apiError);
+        );
+        if (!response.ok) {
+          const errBody = await response.text();
+          throw new Error(`PUDO API error ${response.status}: ${errBody}`);
         }
       }
 
-      showSnackbar("Shipment updated successfully");
-      setEditDialog({ open: false, booking: null, saving: false });
-      await loadBookings();
-    } catch (error) {
-      console.error("Error updating booking:", error);
-      showSnackbar("Error updating shipment", "error");
-      setEditDialog((prev) => ({ ...prev, saving: false }));
-    }
-  };
-
-  const handleDelete = (booking) => {
-    setDeleteDialog({ open: true, booking, deleting: false, action: null });
-  };
-
-  const handleCancelShipment = async () => {
-    const { booking } = deleteDialog;
-    setDeleteDialog((prev) => ({ ...prev, deleting: true, action: "cancel" }));
-    try {
-      if (booking.pudoRef) {
-        try {
-          if (ipcRenderer) {
-            await ipcRenderer.invoke("cancel-shipment", booking.pudoRef);
-          } else {
-            await fetch(`${config.API_BASE_URL}/shipments/${booking.pudoRef}`, {
-              method: "DELETE",
-              headers: getAuthHeaders(),
-            });
-          }
-        } catch (apiError) {
-          console.warn("PUDO API cancellation failed (updating local status anyway):", apiError);
-        }
-      }
-
+      // Only update Firestore after a successful API call
       await bookingService.update(booking.id, { status: "cancelled" });
-      showSnackbar("Shipment cancelled successfully");
-      setDeleteDialog({ open: false, booking: null, deleting: false, action: null });
-      await loadBookings();
-    } catch (error) {
-      console.error("Error cancelling booking:", error);
-      showSnackbar("Error cancelling shipment", "error");
-      setDeleteDialog((prev) => ({ ...prev, deleting: false, action: null }));
-    }
-  };
 
-  const handleDeleteRecord = async () => {
-    const { booking } = deleteDialog;
-    setDeleteDialog((prev) => ({ ...prev, deleting: true, action: "delete" }));
-    try {
-      await bookingService.delete(booking.id);
-      showSnackbar("Record permanently deleted");
-      setDeleteDialog({ open: false, booking: null, deleting: false, action: null });
+      showSnackbar("Shipment cancelled successfully");
+      setCancelDialog({ open: false, booking: null, cancelling: false });
+      closeViewDialog();
       await loadBookings();
     } catch (error) {
-      console.error("Error deleting booking:", error);
-      showSnackbar("Error deleting record", "error");
-      setDeleteDialog((prev) => ({ ...prev, deleting: false, action: null }));
+      console.error("Error cancelling shipment:", error);
+      showSnackbar("Failed to cancel shipment on PUDO API. Please try again.", "error");
+      setCancelDialog((prev) => ({ ...prev, cancelling: false }));
     }
   };
 
   const columns = [
     {
       field: "pudoRef",
-      headerName: "Waybill / Ref",
-      width: 200,
-      renderCell: (params) => (
-        <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
-          {params.value || "—"}
-        </Typography>
-      ),
+      headerName: "Waybill",
+      width: 160,
+      renderCell: (params) => {
+        const trackingRef = params.row.shipmentData?.custom_tracking_reference;
+        return (
+          <Typography variant="body2" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
+            {trackingRef || params.value || "—"}
+          </Typography>
+        );
+      },
     },
     {
       field: "customerName",
@@ -362,32 +321,21 @@ const ShipmentsPage = () => {
     {
       field: "actions",
       headerName: "Actions",
-      width: 130,
+      width: 90,
       sortable: false,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 0.5 }}>
-          <Tooltip title="View Details">
-            <IconButton size="small" onClick={() => handleView(params.row)} color="info">
-              <Visibility fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => handleEdit(params.row)} color="primary">
-              <Edit fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => handleDelete(params.row)} color="error">
-              <Delete fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        <Tooltip title="View Details">
+          <IconButton size="small" onClick={() => handleView(params.row)} color="info">
+            <Visibility fontSize="small" />
+          </IconButton>
+        </Tooltip>
       ),
     },
   ];
 
   const { booking: viewBooking, apiData, apiLoading, apiError } = viewDialog;
   const displayData = apiData || viewBooking?.shipmentData;
+  const isAlreadyCancelled = viewBooking?.status === "cancelled" || viewBooking?.status === "canceled";
 
   const renderContactBlock = (contact, label) => {
     if (!contact) return null;
@@ -432,14 +380,22 @@ const ShipmentsPage = () => {
             {bookings.length} shipment{bookings.length !== 1 ? "s" : ""} total
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={loading ? <CircularProgress size={16} /> : <Refresh />}
-          onClick={loadBookings}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {syncing && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <CircularProgress size={12} />
+              Syncing with PUDO…
+            </Typography>
+          )}
+          <Button
+            variant="outlined"
+            startIcon={loading ? <CircularProgress size={16} /> : <Refresh />}
+            onClick={loadBookings}
+            disabled={loading || syncing}
+          >
+            Refresh
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ height: 620, width: "100%" }}>
@@ -452,9 +408,7 @@ const ShipmentsPage = () => {
             pagination: { paginationModel: { page: 0, pageSize: 10 } },
           }}
           disableRowSelectionOnClick
-          sx={{
-            "& .MuiDataGrid-cell": { alignItems: "center" },
-          }}
+          sx={{ "& .MuiDataGrid-cell": { alignItems: "center" } }}
         />
       </Paper>
 
@@ -466,7 +420,9 @@ const ShipmentsPage = () => {
               <LocalShipping color="primary" />
               <Box>
                 <Typography variant="h6">
-                  {viewBooking?.pudoRef || "Shipment Details"}
+                  {viewBooking?.shipmentData?.custom_tracking_reference ||
+                    viewBooking?.pudoRef ||
+                    "Shipment Details"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {viewBooking?.customerName}
@@ -483,12 +439,12 @@ const ShipmentsPage = () => {
               )}
               <Tooltip title="Refresh from PUDO API">
                 <span>
-                  <IconButton
-                    size="small"
-                    onClick={handleRefreshAPIData}
-                    disabled={apiLoading}
-                  >
-                    {apiLoading ? <CircularProgress size={18} /> : <Refresh fontSize="small" />}
+                  <IconButton size="small" onClick={handleRefreshAPIData} disabled={apiLoading}>
+                    {apiLoading ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      <Refresh fontSize="small" />
+                    )}
                   </IconButton>
                 </span>
               </Tooltip>
@@ -516,14 +472,19 @@ const ShipmentsPage = () => {
                 <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Waybill / Ref
+                      Waybill
                     </Typography>
                     <Typography
                       variant="body1"
                       sx={{ fontWeight: 700, fontFamily: "monospace" }}
                     >
-                      {viewBooking?.pudoRef || "—"}
+                      {viewBooking?.shipmentData?.custom_tracking_reference || "—"}
                     </Typography>
+                    {viewBooking?.pudoRef && (
+                      <Typography variant="caption" color="text.disabled">
+                        ID: {viewBooking.pudoRef}
+                      </Typography>
+                    )}
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">
@@ -591,7 +552,11 @@ const ShipmentsPage = () => {
                 </Box>
                 {(displayData?.special_instructions_collection ||
                   viewBooking?.shipmentData?.special_instructions_collection) && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1, display: "block" }}
+                  >
                     Instructions:{" "}
                     {displayData?.special_instructions_collection ||
                       viewBooking?.shipmentData?.special_instructions_collection}
@@ -620,7 +585,11 @@ const ShipmentsPage = () => {
                 </Box>
                 {(displayData?.special_instructions_delivery ||
                   viewBooking?.shipmentData?.special_instructions_delivery) && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1, display: "block" }}
+                  >
                     Instructions:{" "}
                     {displayData?.special_instructions_delivery ||
                       viewBooking?.shipmentData?.special_instructions_delivery}
@@ -633,203 +602,65 @@ const ShipmentsPage = () => {
 
         <DialogActions>
           <Button onClick={closeViewDialog}>Close</Button>
-          <Button
-            variant="outlined"
-            startIcon={<Edit />}
-            onClick={() => {
-              closeViewDialog();
-              handleEdit(viewBooking);
-            }}
-          >
-            Edit
-          </Button>
+          {!isAlreadyCancelled && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<Block />}
+              onClick={() => handleOpenCancel(viewBooking)}
+            >
+              Cancel Shipment
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
-      {/* ─── Edit Dialog ─── */}
+      {/* ─── Cancel Confirmation Dialog ─── */}
       <Dialog
-        open={editDialog.open}
+        open={cancelDialog.open}
         onClose={() =>
-          !editDialog.saving && setEditDialog({ open: false, booking: null, saving: false })
-        }
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Edit Shipment</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Ref: <strong>{editDialog.booking?.pudoRef || "—"}</strong>
-              {" · "}
-              Customer: <strong>{editDialog.booking?.customerName}</strong>
-            </Typography>
-
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={editForm.status}
-                label="Status"
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, status: e.target.value }))
-                }
-              >
-                {LOCAL_STATUSES.map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {STATUS_CONFIG[s]?.label || s}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="Notes (internal)"
-              value={editForm.notes}
-              onChange={(e) =>
-                setEditForm((prev) => ({ ...prev, notes: e.target.value }))
-              }
-              multiline
-              rows={2}
-              fullWidth
-              size="small"
-              helperText="Stored locally — not sent to PUDO."
-            />
-
-            <Divider />
-
-            <Typography variant="subtitle2" color="text.secondary">
-              PUDO API Fields
-            </Typography>
-
-            <TextField
-              label="Special Instructions — Collection"
-              value={editForm.specialInstructionsCollection}
-              onChange={(e) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  specialInstructionsCollection: e.target.value,
-                }))
-              }
-              fullWidth
-              size="small"
-            />
-
-            <TextField
-              label="Special Instructions — Delivery"
-              value={editForm.specialInstructionsDelivery}
-              onChange={(e) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  specialInstructionsDelivery: e.target.value,
-                }))
-              }
-              fullWidth
-              size="small"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setEditDialog({ open: false, booking: null, saving: false })}
-            disabled={editDialog.saving}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveEdit}
-            variant="contained"
-            disabled={editDialog.saving}
-            startIcon={editDialog.saving ? <CircularProgress size={16} /> : null}
-          >
-            {editDialog.saving ? "Saving…" : "Save Changes"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ─── Cancel / Delete Dialog ─── */}
-      <Dialog
-        open={deleteDialog.open}
-        onClose={() =>
-          !deleteDialog.deleting &&
-          setDeleteDialog({ open: false, booking: null, deleting: false, action: null })
+          !cancelDialog.cancelling &&
+          setCancelDialog({ open: false, booking: null, cancelling: false })
         }
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Cancel or Delete Shipment</DialogTitle>
+        <DialogTitle>Cancel Shipment</DialogTitle>
         <DialogContent>
-          <Typography gutterBottom>
-            Shipment for <strong>{deleteDialog.booking?.customerName}</strong>
-            {deleteDialog.booking?.pudoRef && (
-              <Typography
-                component="span"
-                variant="body2"
-                color="text.secondary"
-                sx={{ ml: 0.5 }}
-              >
-                ({deleteDialog.booking.pudoRef})
-              </Typography>
-            )}
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            This will cancel the shipment on the PUDO API. This action cannot be undone.
+          </Alert>
+          <Typography>
+            Cancel shipment for <strong>{cancelDialog.booking?.customerName}</strong>?
           </Typography>
-
-          <Stack spacing={1.5} sx={{ mt: 2 }}>
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Cancel Shipment
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Marks the shipment as <strong>Cancelled</strong> and attempts to cancel it
-                on the PUDO API. The record remains visible in this list.
-              </Typography>
-            </Paper>
-            <Paper variant="outlined" sx={{ p: 1.5, borderColor: "error.light" }}>
-              <Typography variant="subtitle2" color="error" gutterBottom>
-                Delete Record
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Permanently removes the booking record from the local database. This does{" "}
-                <strong>not</strong> cancel the shipment on PUDO.
-              </Typography>
-            </Paper>
-          </Stack>
+          {(cancelDialog.booking?.shipmentData?.custom_tracking_reference ||
+            cancelDialog.booking?.pudoRef) && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Waybill:{" "}
+              {cancelDialog.booking.shipmentData?.custom_tracking_reference ||
+                cancelDialog.booking.pudoRef}
+            </Typography>
+          )}
         </DialogContent>
-        <DialogActions sx={{ gap: 0.5 }}>
+        <DialogActions>
           <Button
             onClick={() =>
-              setDeleteDialog({ open: false, booking: null, deleting: false, action: null })
+              setCancelDialog({ open: false, booking: null, cancelling: false })
             }
-            disabled={deleteDialog.deleting}
+            disabled={cancelDialog.cancelling}
           >
-            Close
+            Go Back
           </Button>
           <Button
-            onClick={handleDeleteRecord}
+            onClick={handleConfirmCancel}
             color="error"
-            variant="outlined"
-            disabled={deleteDialog.deleting}
-            startIcon={
-              deleteDialog.deleting && deleteDialog.action === "delete" ? (
-                <CircularProgress size={16} />
-              ) : null
-            }
-          >
-            {deleteDialog.deleting && deleteDialog.action === "delete"
-              ? "Deleting…"
-              : "Delete Record"}
-          </Button>
-          <Button
-            onClick={handleCancelShipment}
-            color="warning"
             variant="contained"
-            disabled={deleteDialog.deleting}
+            disabled={cancelDialog.cancelling}
             startIcon={
-              deleteDialog.deleting && deleteDialog.action === "cancel" ? (
-                <CircularProgress size={16} />
-              ) : null
+              cancelDialog.cancelling ? <CircularProgress size={16} color="inherit" /> : <Block />
             }
           >
-            {deleteDialog.deleting && deleteDialog.action === "cancel"
-              ? "Cancelling…"
-              : "Cancel Shipment"}
+            {cancelDialog.cancelling ? "Cancelling…" : "Confirm Cancel"}
           </Button>
         </DialogActions>
       </Dialog>
