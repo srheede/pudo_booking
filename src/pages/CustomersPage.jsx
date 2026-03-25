@@ -42,6 +42,7 @@ const CustomersPage = () => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [lockersMap, setLockersMap] = useState({});
+  const [kiosksMap, setKiosksMap] = useState({});
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -71,7 +72,6 @@ const CustomersPage = () => {
       let terminals;
 
       if (!ipcRenderer) {
-        // Browser mode: make direct API call
         const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
           method: "GET",
           headers: getAuthHeaders(),
@@ -83,16 +83,21 @@ const CustomersPage = () => {
 
         terminals = await response.json();
       } else {
-        // Electron mode: use IPC
         terminals = await ipcRenderer.invoke("get-all-terminals");
       }
 
       if (terminals && Array.isArray(terminals)) {
         const lockersMapping = {};
-        terminals.forEach((locker) => {
-          lockersMapping[locker.code] = locker.name;
+        const kiosksMapping = {};
+        terminals.forEach((terminal) => {
+          if (terminal.type?.id === 2) {
+            lockersMapping[terminal.code] = terminal.name;
+          } else if (terminal.type?.id === 1) {
+            kiosksMapping[terminal.code] = terminal.name;
+          }
         });
         setLockersMap(lockersMapping);
+        setKiosksMap(kiosksMapping);
       }
     } catch (error) {
       console.error("Error loading lockers data:", error);
@@ -170,13 +175,12 @@ const CustomersPage = () => {
       field: "deliveryType",
       headerName: "Delivery Type",
       width: 120,
-      renderCell: (params) => (
-        <Chip
-          label={params.value === "locker" ? "Locker" : "Address"}
-          color={params.value === "locker" ? "primary" : "secondary"}
-          size="small"
-        />
-      ),
+      renderCell: (params) => {
+        const type = params.value;
+        const label = type === "locker" ? "Locker" : type === "kiosk" ? "Kiosk" : "Address";
+        const color = type === "locker" ? "primary" : type === "kiosk" ? "warning" : "secondary";
+        return <Chip label={label} color={color} size="small" />;
+      },
     },
     {
       field: "deliveryLocation",
@@ -190,6 +194,11 @@ const CustomersPage = () => {
           return lockerName
             ? `${customer.lockerId} - ${lockerName}`
             : customer.lockerId || "Not set";
+        } else if (customer.deliveryType === "kiosk") {
+          const kioskName = kiosksMap[customer.kioskId];
+          return kioskName
+            ? `${customer.kioskId} - ${kioskName}`
+            : customer.kioskId || "Not set";
         } else {
           const address = customer.address;
           if (address) {

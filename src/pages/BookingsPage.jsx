@@ -43,11 +43,25 @@ const ipcRenderer = window.require
   : null;
 
 const LOCKER_SIZES = [
-  { value: "XS", label: "Extra Small (XS)", lockerCode: "L2LXS - ECO", doorCode: "L2DXS - ECO" },
-  { value: "S", label: "Small (S)", lockerCode: "L2LS - ECO", doorCode: "L2DS - ECO" },
-  { value: "M", label: "Medium (M)", lockerCode: "L2LM - ECO", doorCode: "L2DM - ECO" },
-  { value: "L", label: "Large (L)", lockerCode: "L2LL - ECO", doorCode: "L2DL - ECO" },
+  { value: "XS", label: "Extra Small (XS)" },
+  { value: "S", label: "Small (S)" },
+  { value: "M", label: "Medium (M)" },
+  { value: "L", label: "Large (L)" },
 ];
+
+// Derives the correct PUDO service level code from both the sender (collection)
+// type and the customer (delivery) type.
+// Pattern: {C}2{D}{SIZE} - ECO  where C = L(ocker)|K(iosk), D = L|K|D(oor)
+const getServiceCode = (senderType, customerType, size) => {
+  const from = senderType === "kiosk" ? "K" : "L";
+  const to =
+    customerType === "kiosk"
+      ? "K"
+      : customerType === "locker"
+      ? "L"
+      : "D";
+  return `${from}2${to}${size} - ECO`;
+};
 
 // Maps full province names stored by older records to abbreviated zone codes.
 // New records from Google Places already store the short_name abbreviation.
@@ -86,6 +100,7 @@ const BookingsPage = () => {
   });
   const [sender, setSender] = useState(null);
   const [lockersMap, setLockersMap] = useState({});
+  const [kiosksMap, setKiosksMap] = useState({});
 
   useEffect(() => {
     loadData();
@@ -100,7 +115,7 @@ const BookingsPage = () => {
       ]);
       setCustomers(customersData);
       setSender(senderData);
-      await loadLockersData();
+      await loadTerminalsData();
     } catch (error) {
       console.error("Error loading data:", error);
       showSnackbar("Error loading data", "error");
@@ -109,12 +124,11 @@ const BookingsPage = () => {
     }
   };
 
-  const loadLockersData = async () => {
+  const loadTerminalsData = async () => {
     try {
       let terminals;
 
       if (!ipcRenderer) {
-        // Browser mode: make direct API call
         const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
           method: "GET",
           headers: getAuthHeaders(),
@@ -126,19 +140,24 @@ const BookingsPage = () => {
 
         terminals = await response.json();
       } else {
-        // Electron mode: use IPC
         terminals = await ipcRenderer.invoke("get-all-terminals");
       }
 
       if (terminals && Array.isArray(terminals)) {
         const lockersMapping = {};
-        terminals.forEach((locker) => {
-          lockersMapping[locker.code] = locker.name;
+        const kiosksMapping = {};
+        terminals.forEach((terminal) => {
+          if (terminal.type?.id === 2) {
+            lockersMapping[terminal.code] = terminal.name;
+          } else if (terminal.type?.id === 1) {
+            kiosksMapping[terminal.code] = terminal.name;
+          }
         });
         setLockersMap(lockersMapping);
+        setKiosksMap(kiosksMapping);
       }
     } catch (error) {
-      console.error("Error loading lockers data:", error);
+      console.error("Error loading terminals data:", error);
     }
   };
 
@@ -196,7 +215,6 @@ const BookingsPage = () => {
       for (const customer of selectedCustomerData) {
         try {
           const size = customerSizes[customer.id] || defaultSize;
-          const sizeConfig = LOCKER_SIZES.find((s) => s.value === size);
 
           const buildAddressObject = (address) => ({
             street_address: address.street,
@@ -216,19 +234,23 @@ const BookingsPage = () => {
           const collectionAddress =
             sender.deliveryType === "locker"
               ? { terminal_id: sender.lockerId }
+              : sender.deliveryType === "kiosk"
+              ? { terminal_id: sender.kioskId }
               : buildAddressObject(sender.address);
 
           // Build delivery address
           const deliveryAddress =
             customer.deliveryType === "locker"
               ? { terminal_id: customer.lockerId }
+              : customer.deliveryType === "kiosk"
+              ? { terminal_id: customer.kioskId }
               : buildAddressObject(customer.address);
 
-          // L2L when both are lockers, L2D when delivery is to a door address
-          const serviceCode =
-            customer.deliveryType === "locker"
-              ? sizeConfig.lockerCode
-              : sizeConfig.doorCode;
+          const serviceCode = getServiceCode(
+            sender.deliveryType,
+            customer.deliveryType,
+            size
+          );
 
           const payload = {
             collection_address: collectionAddress,
@@ -341,13 +363,12 @@ const BookingsPage = () => {
       field: "deliveryType",
       headerName: "Delivery Type",
       width: 120,
-      renderCell: (params) => (
-        <Chip
-          label={params.value === "locker" ? "Locker" : "Address"}
-          color={params.value === "locker" ? "primary" : "secondary"}
-          size="small"
-        />
-      ),
+      renderCell: (params) => {
+        const type = params.value;
+        const label = type === "locker" ? "Locker" : type === "kiosk" ? "Kiosk" : "Address";
+        const color = type === "locker" ? "primary" : type === "kiosk" ? "warning" : "secondary";
+        return <Chip label={label} color={color} size="small" />;
+      },
     },
     {
       field: "deliveryLocation",
@@ -361,6 +382,11 @@ const BookingsPage = () => {
           return lockerName
             ? `${customer.lockerId} - ${lockerName}`
             : customer.lockerId || "Not set";
+        } else if (customer.deliveryType === "kiosk") {
+          const kioskName = kiosksMap[customer.kioskId];
+          return kioskName
+            ? `${customer.kioskId} - ${kioskName}`
+            : customer.kioskId || "Not set";
         } else {
           const address = customer.address;
           if (address) {

@@ -17,6 +17,7 @@ import {
   Switch,
 } from "@mui/material";
 import LockerAutocomplete from "./LockerAutocomplete.jsx";
+import KioskAutocomplete from "./KioskAutocomplete.jsx";
 import AddressAutocomplete from "./AddressAutocomplete.jsx";
 
 const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
@@ -26,6 +27,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
     mobile: "",
     deliveryType: "locker",
     lockerId: "",
+    kioskId: "",
     address: {
       street: "",
       suburb: "",
@@ -50,6 +52,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         mobile: customer.mobile || "",
         deliveryType: customer.deliveryType || "locker",
         lockerId: customer.lockerId || "",
+        kioskId: customer.kioskId || "",
         address: {
           street: customer.address?.street || "",
           suburb: customer.address?.suburb || "",
@@ -75,6 +78,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         mobile: "",
         deliveryType: "locker",
         lockerId: "",
+        kioskId: "",
         address: {
           street: "",
           suburb: "",
@@ -126,6 +130,19 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
       setErrors((prev) => ({
         ...prev,
         lockerId: "",
+      }));
+    }
+  };
+
+  const handleKioskChange = (kioskId) => {
+    setFormData((prev) => ({
+      ...prev,
+      kioskId,
+    }));
+    if (errors.kioskId) {
+      setErrors((prev) => ({
+        ...prev,
+        kioskId: "",
       }));
     }
   };
@@ -184,6 +201,9 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
     if (formData.deliveryType === "locker") {
       if (!formData.lockerId)
         newErrors.lockerId = "Locker selection is required";
+    } else if (formData.deliveryType === "kiosk") {
+      if (!formData.kioskId)
+        newErrors.kioskId = "Kiosk selection is required";
     } else {
       if (!formData.address.street.trim())
         newErrors["address.street"] = "Street address is required";
@@ -211,6 +231,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
       mobile: "",
       deliveryType: "locker",
       lockerId: "",
+      kioskId: "",
       address: {
         street: "",
         suburb: "",
@@ -285,6 +306,11 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
                     label="Locker"
                   />
                   <FormControlLabel
+                    value="kiosk"
+                    control={<Radio />}
+                    label="Kiosk"
+                  />
+                  <FormControlLabel
                     value="address"
                     control={<Radio />}
                     label="Address"
@@ -301,6 +327,16 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
                   label="Select Locker"
                   error={!!errors.lockerId}
                   helperText={errors.lockerId}
+                />
+              </Grid>
+            ) : formData.deliveryType === "kiosk" ? (
+              <Grid item xs={12}>
+                <KioskAutocomplete
+                  value={formData.kioskId}
+                  onChange={handleKioskChange}
+                  label="Select Kiosk"
+                  error={!!errors.kioskId}
+                  helperText={errors.kioskId}
                 />
               </Grid>
             ) : (
