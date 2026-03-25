@@ -43,11 +43,30 @@ const ipcRenderer = window.require
   : null;
 
 const LOCKER_SIZES = [
-  { value: "XS", label: "Extra Small (XS)", code: "L2LXS - ECO" },
-  { value: "S", label: "Small (S)", code: "L2LS - ECO" },
-  { value: "M", label: "Medium (M)", code: "L2LM - ECO" },
-  { value: "L", label: "Large (L)", code: "L2LL - ECO" },
+  { value: "XS", label: "Extra Small (XS)", lockerCode: "L2LXS - ECO", doorCode: "L2DXS - ECO" },
+  { value: "S", label: "Small (S)", lockerCode: "L2LS - ECO", doorCode: "L2DS - ECO" },
+  { value: "M", label: "Medium (M)", lockerCode: "L2LM - ECO", doorCode: "L2DM - ECO" },
+  { value: "L", label: "Large (L)", lockerCode: "L2LL - ECO", doorCode: "L2DL - ECO" },
 ];
+
+// Maps full province names stored by older records to abbreviated zone codes.
+// New records from Google Places already store the short_name abbreviation.
+const PROVINCE_TO_ZONE = {
+  Gauteng: "GP",
+  "Western Cape": "WC",
+  "Eastern Cape": "EC",
+  "KwaZulu-Natal": "KZN",
+  "Free State": "FS",
+  Limpopo: "LP",
+  Mpumalanga: "MP",
+  "North West": "NW",
+  "Northern Cape": "NC",
+};
+
+const toZoneCode = (province) => {
+  if (!province) return "";
+  return PROVINCE_TO_ZONE[province] || province;
+};
 
 const BookingsPage = () => {
   const [customers, setCustomers] = useState([]);
@@ -179,29 +198,37 @@ const BookingsPage = () => {
           const size = customerSizes[customer.id] || defaultSize;
           const sizeConfig = LOCKER_SIZES.find((s) => s.value === size);
 
+          const buildAddressObject = (address) => ({
+            street_address: address.street,
+            local_area: address.suburb || "",
+            suburb: address.suburb || "",
+            city: address.city,
+            zone: toZoneCode(address.province),
+            code: address.postalCode || "",
+            country: "South Africa",
+            entered_address: address.fullAddress || `${address.street}, ${address.suburb || ""}, ${address.city}, ${address.postalCode || ""}, South Africa`.replace(/,\s*,/g, ","),
+            type: "residential",
+            ...(address.lat != null && { lat: String(address.lat) }),
+            ...(address.lng != null && { lng: String(address.lng) }),
+          });
+
           // Build collection address
           const collectionAddress =
             sender.deliveryType === "locker"
               ? { terminal_id: sender.lockerId }
-              : {
-                  line1: sender.address.street,
-                  line2: sender.address.suburb || "",
-                  city: sender.address.city,
-                  province: sender.address.province,
-                  postal_code: sender.address.postalCode || "",
-                };
+              : buildAddressObject(sender.address);
 
           // Build delivery address
           const deliveryAddress =
             customer.deliveryType === "locker"
               ? { terminal_id: customer.lockerId }
-              : {
-                  line1: customer.address.street,
-                  line2: customer.address.suburb || "",
-                  city: customer.address.city,
-                  province: customer.address.province,
-                  postal_code: customer.address.postalCode || "",
-                };
+              : buildAddressObject(customer.address);
+
+          // L2L when both are lockers, L2D when delivery is to a door address
+          const serviceCode =
+            customer.deliveryType === "locker"
+              ? sizeConfig.lockerCode
+              : sizeConfig.doorCode;
 
           const payload = {
             collection_address: collectionAddress,
@@ -218,7 +245,7 @@ const BookingsPage = () => {
               email: customer.email,
               mobile_number: customer.mobile,
             },
-            service_level_code: sizeConfig.code,
+            service_level_code: serviceCode,
           };
 
           console.log("Creating shipment with payload:", payload);

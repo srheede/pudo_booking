@@ -33,6 +33,8 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
       province: "",
       postalCode: "",
       fullAddress: "",
+      lat: null,
+      lng: null,
     },
   });
 
@@ -55,6 +57,8 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
           province: customer.address?.province || "",
           postalCode: customer.address?.postalCode || "",
           fullAddress: customer.address?.fullAddress || "",
+          lat: customer.address?.lat || null,
+          lng: customer.address?.lng || null,
         },
       });
       // Show address details if editing and there's address data
@@ -214,6 +218,8 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
         province: "",
         postalCode: "",
         fullAddress: "",
+        lat: null,
+        lng: null,
       },
     });
     setErrors({});

@@ -143,6 +143,8 @@ const AddressAutocomplete = ({
                   province: "",
                   postalCode: "",
                   fullAddress: formattedAddress,
+                  lat: place.geometry.location.lat(),
+                  lng: place.geometry.location.lng(),
                 };
 
                 // Map Google Places API components to our address structure
@@ -163,7 +165,8 @@ const AddressAutocomplete = ({
                   } else if (types.includes("locality")) {
                     addressData.city = component.long_name;
                   } else if (types.includes("administrative_area_level_1")) {
-                    addressData.province = component.long_name;
+                    // Use short_name to get zone abbreviation (e.g. "GP" not "Gauteng")
+                    addressData.province = component.short_name;
                   } else if (types.includes("postal_code")) {
                     addressData.postalCode = component.long_name;
                   }

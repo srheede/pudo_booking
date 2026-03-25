@@ -34,6 +34,8 @@ const SenderPage = () => {
       province: "",
       postalCode: "",
       fullAddress: "",
+      lat: null,
+      lng: null,
     },
   });
 
@@ -70,6 +72,8 @@ const SenderPage = () => {
             province: senderData.address?.province || "",
             postalCode: senderData.address?.postalCode || "",
             fullAddress: senderData.address?.fullAddress || "",
+            lat: senderData.address?.lat || null,
+            lng: senderData.address?.lng || null,
           },
         });
 
