@@ -22,11 +22,13 @@ import {
   People as PeopleIcon,
   Person as PersonIcon,
   LocalShipping as ShippingIcon,
+  ReceiptLong as ReceiptLongIcon,
   Logout as LogoutIcon,
 } from "@mui/icons-material";
 import CustomersPage from "./pages/CustomersPage.jsx";
 import SenderPage from "./pages/SenderPage.jsx";
 import BookingsPage from "./pages/BookingsPage.jsx";
+import ShipmentsPage from "./pages/ShipmentsPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
@@ -66,6 +68,7 @@ const AppContent = () => {
     { id: "customers", label: "Customers", icon: <PeopleIcon /> },
     { id: "sender", label: "Sender Details", icon: <PersonIcon /> },
     { id: "bookings", label: "Create Bookings", icon: <ShippingIcon /> },
+    { id: "shipments", label: "Shipments", icon: <ReceiptLongIcon /> },
   ];
 
   const renderPage = () => {
@@ -76,6 +79,8 @@ const AppContent = () => {
         return <SenderPage />;
       case "bookings":
         return <BookingsPage />;
+      case "shipments":
+        return <ShipmentsPage />;
       default:
         return <CustomersPage />;
     }

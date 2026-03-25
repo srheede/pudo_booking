@@ -113,3 +113,43 @@ ipcMain.handle("get-all-terminals", async (event) => {
     throw error;
   }
 });
+
+ipcMain.handle("get-shipment", async (event, shipmentId) => {
+  try {
+    const response = await axios.get(
+      `${config.API_BASE_URL}/shipments/${shipmentId}`,
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error getting shipment:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("update-shipment", async (event, { shipmentId, payload }) => {
+  try {
+    const response = await axios.put(
+      `${config.API_BASE_URL}/shipments/${shipmentId}`,
+      payload,
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error updating shipment:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
+  try {
+    const response = await axios.delete(
+      `${config.API_BASE_URL}/shipments/${shipmentId}`,
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error cancelling shipment:", error);
+    throw error;
+  }
+});
