@@ -18,6 +18,7 @@ import {
 import { Save } from "@mui/icons-material";
 import { senderService } from "../firebase/services";
 import LockerAutocomplete from "../components/LockerAutocomplete.jsx";
+import KioskAutocomplete from "../components/KioskAutocomplete.jsx";
 import AddressAutocomplete from "../components/AddressAutocomplete.jsx";
 
 const SenderPage = () => {
@@ -27,6 +28,7 @@ const SenderPage = () => {
     mobile: "",
     deliveryType: "locker",
     lockerId: "",
+    kioskId: "",
     address: {
       street: "",
       suburb: "",
@@ -65,6 +67,7 @@ const SenderPage = () => {
           mobile: senderData.mobile || "",
           deliveryType: senderData.deliveryType || "locker",
           lockerId: senderData.lockerId || "",
+          kioskId: senderData.kioskId || "",
           address: {
             street: senderData.address?.street || "",
             suburb: senderData.address?.suburb || "",
@@ -137,6 +140,19 @@ const SenderPage = () => {
     }
   };
 
+  const handleKioskChange = (kioskId) => {
+    setFormData((prev) => ({
+      ...prev,
+      kioskId,
+    }));
+    if (errors.kioskId) {
+      setErrors((prev) => ({
+        ...prev,
+        kioskId: "",
+      }));
+    }
+  };
+
   const handleAddressChange = (addressData) => {
     setFormData((prev) => ({
       ...prev,
@@ -191,6 +207,9 @@ const SenderPage = () => {
     if (formData.deliveryType === "locker") {
       if (!formData.lockerId)
         newErrors.lockerId = "Locker selection is required";
+    } else if (formData.deliveryType === "kiosk") {
+      if (!formData.kioskId)
+        newErrors.kioskId = "Kiosk selection is required";
     } else {
       if (!formData.address.street.trim())
         newErrors["address.street"] = "Street address is required";
@@ -303,6 +322,11 @@ const SenderPage = () => {
                   label="Locker"
                 />
                 <FormControlLabel
+                  value="kiosk"
+                  control={<Radio />}
+                  label="Kiosk"
+                />
+                <FormControlLabel
                   value="address"
                   control={<Radio />}
                   label="Address"
@@ -319,6 +343,16 @@ const SenderPage = () => {
                 label="Collection Locker"
                 error={!!errors.lockerId}
                 helperText={errors.lockerId}
+              />
+            </Grid>
+          ) : formData.deliveryType === "kiosk" ? (
+            <Grid item xs={12}>
+              <KioskAutocomplete
+                value={formData.kioskId}
+                onChange={handleKioskChange}
+                label="Collection Kiosk"
+                error={!!errors.kioskId}
+                helperText={errors.kioskId}
               />
             </Grid>
           ) : (
