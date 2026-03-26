@@ -3,6 +3,7 @@ const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
 const config = require("../config.json");
+const { PDFDocument } = require("pdf-lib");
 
 const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
 const STICKER_BASE_URL = "https://api-pudo.co.za/generate/sticker";
@@ -170,24 +171,78 @@ ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
   }
 });
 
-// Download the official PUDO waybill PDF for a shipment.
-// The PUDO API streams the PDF binary directly (not a signed URL).
-ipcMain.handle("download-waybill", async (event, { shipmentId, trackingRef }) => {
+// Combine multiple waybill PDFs onto A4 pages with 6 waybills per page (2 cols × 3 rows).
+// Each waybill is scaled to 1/6 of the A4 area regardless of how many are selected.
+async function combineWaybillPdfs(pdfBuffers) {
+  const A4_W = 595.28;
+  const A4_H = 841.89;
+  const COLS = 2;
+  const ROWS = 3;
+  const WAYBILLS_PER_PAGE = COLS * ROWS;
+  const SLOT_W = A4_W / COLS;
+  const SLOT_H = A4_H / ROWS;
+
+  const combinedDoc = await PDFDocument.create();
+
+  for (let pageStart = 0; pageStart < pdfBuffers.length; pageStart += WAYBILLS_PER_PAGE) {
+    const chunk = pdfBuffers.slice(pageStart, pageStart + WAYBILLS_PER_PAGE);
+    const page = combinedDoc.addPage([A4_W, A4_H]);
+
+    for (let i = 0; i < chunk.length; i++) {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const slotX = col * SLOT_W;
+      const slotY = A4_H - (row + 1) * SLOT_H;
+
+      const waybillDoc = await PDFDocument.load(chunk[i]);
+      const [embeddedPage] = await combinedDoc.embedPdf(waybillDoc);
+      const { width: origW, height: origH } = embeddedPage;
+      const scale = Math.min(SLOT_W / origW, SLOT_H / origH);
+      const scaledW = origW * scale;
+      const scaledH = origH * scale;
+
+      page.drawPage(embeddedPage, {
+        x: slotX + (SLOT_W - scaledW) / 2,
+        y: slotY + (SLOT_H - scaledH) / 2,
+        width: scaledW,
+        height: scaledH,
+      });
+    }
+  }
+
+  return combinedDoc.save();
+}
+
+// Download and combine PUDO waybill PDFs — fits 6 per A4 page (2 cols × 3 rows).
+// Accepts an array of { shipmentId, trackingRef } objects.
+ipcMain.handle("download-waybills-combined", async (event, shipments) => {
   try {
-    const response = await axios.get(`${STICKER_BASE_URL}/${shipmentId}`, {
-      params: { api_key: config.PUDO_API_KEY },
-      responseType: "arraybuffer",
-    });
+    const pdfBuffers = await Promise.all(
+      shipments.map(({ shipmentId }) =>
+        axios
+          .get(`${STICKER_BASE_URL}/${shipmentId}`, {
+            params: { api_key: config.PUDO_API_KEY },
+            responseType: "arraybuffer",
+          })
+          .then((r) => r.data)
+      )
+    );
+
+    const combinedPdf = await combineWaybillPdfs(pdfBuffers);
 
     const downloadsPath = app.getPath("downloads");
-    const filename = `${trackingRef || shipmentId}.pdf`;
+    const firstName = shipments[0]?.trackingRef || String(shipments[0]?.shipmentId);
+    const filename =
+      shipments.length === 1
+        ? `${firstName}.pdf`
+        : `waybills_${firstName}_+${shipments.length - 1}.pdf`;
     const filepath = path.join(downloadsPath, filename);
-    fs.writeFileSync(filepath, Buffer.from(response.data));
+    fs.writeFileSync(filepath, Buffer.from(combinedPdf));
     shell.showItemInFolder(filepath);
 
     return { success: true, filepath, filename };
   } catch (error) {
-    console.error("Error downloading waybill:", error);
+    console.error("Error downloading waybills:", error);
     throw error;
   }
 });

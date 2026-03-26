@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { PDFDocument } from "pdf-lib";
 import {
   Box,
   Typography,
@@ -271,61 +272,94 @@ const ShipmentsPage = () => {
     const selected = bookings.filter((b) => selectedIds.includes(b.id));
     if (!selected.length) return;
 
-    setDownloading({ active: true, current: 0, total: selected.length });
+    const shipments = selected.map((booking) => ({
+      shipmentId: booking.pudoRef,
+      trackingRef:
+        booking.shipmentData?.custom_tracking_reference || String(booking.pudoRef),
+    }));
 
-    let successCount = 0;
-    const errors = [];
+    setDownloading({ active: true, current: 0, total: shipments.length });
 
-    for (let i = 0; i < selected.length; i++) {
-      const booking = selected[i];
-      setDownloading((prev) => ({ ...prev, current: i + 1 }));
+    try {
+      if (ipcRenderer) {
+        await ipcRenderer.invoke("download-waybills-combined", shipments);
+        showSnackbar(
+          `${shipments.length} waybill${shipments.length !== 1 ? "s" : ""} combined and downloaded`,
+          "success"
+        );
+      } else {
+        // Browser dev fallback: fetch each PDF via Vite proxy then combine with pdf-lib.
+        const A4_W = 595.28;
+        const A4_H = 841.89;
+        const COLS = 2;
+        const ROWS = 3;
+        const WAYBILLS_PER_PAGE = COLS * ROWS;
+        const SLOT_W = A4_W / COLS;
+        const SLOT_H = A4_H / ROWS;
 
-      const shipmentId = booking.pudoRef;
-      const trackingRef =
-        booking.shipmentData?.custom_tracking_reference || String(shipmentId);
-
-      try {
-        if (ipcRenderer) {
-          await ipcRenderer.invoke("download-waybill", { shipmentId, trackingRef });
-        } else {
-          // Browser dev fallback: use the Vite proxy (/pudo-generate → api-pudo.co.za/generate)
-          // to avoid CORS. The API returns the PDF binary directly.
+        const pdfBuffers = [];
+        for (let i = 0; i < shipments.length; i++) {
+          setDownloading((prev) => ({ ...prev, current: i + 1 }));
           const res = await fetch(
-            `/pudo-generate/sticker/${shipmentId}?api_key=${config.PUDO_API_KEY}`
+            `/pudo-generate/sticker/${shipments[i].shipmentId}?api_key=${config.PUDO_API_KEY}`
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const blob = await res.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = blobUrl;
-          a.download = `${trackingRef}.pdf`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          pdfBuffers.push(await res.arrayBuffer());
         }
-        successCount++;
-      } catch (err) {
-        console.error(`Failed to download label for ${trackingRef}:`, err);
-        errors.push(trackingRef);
+
+        const combinedDoc = await PDFDocument.create();
+        for (let pageStart = 0; pageStart < pdfBuffers.length; pageStart += WAYBILLS_PER_PAGE) {
+          const chunk = pdfBuffers.slice(pageStart, pageStart + WAYBILLS_PER_PAGE);
+          const page = combinedDoc.addPage([A4_W, A4_H]);
+
+          for (let i = 0; i < chunk.length; i++) {
+            const col = i % COLS;
+            const row = Math.floor(i / COLS);
+            const slotX = col * SLOT_W;
+            const slotY = A4_H - (row + 1) * SLOT_H;
+
+            const waybillDoc = await PDFDocument.load(chunk[i]);
+            const [embeddedPage] = await combinedDoc.embedPdf(waybillDoc);
+            const { width: origW, height: origH } = embeddedPage;
+            const scale = Math.min(SLOT_W / origW, SLOT_H / origH);
+            const scaledW = origW * scale;
+            const scaledH = origH * scale;
+
+            page.drawPage(embeddedPage, {
+              x: slotX + (SLOT_W - scaledW) / 2,
+              y: slotY + (SLOT_H - scaledH) / 2,
+              width: scaledW,
+              height: scaledH,
+            });
+          }
+        }
+
+        const pdfBytes = await combinedDoc.save();
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        const firstName = shipments[0]?.trackingRef;
+        a.download =
+          shipments.length === 1
+            ? `${firstName}.pdf`
+            : `waybills_${firstName}_+${shipments.length - 1}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+        showSnackbar(
+          `${shipments.length} waybill${shipments.length !== 1 ? "s" : ""} combined and downloaded`,
+          "success"
+        );
       }
+    } catch (err) {
+      console.error("Failed to download waybills:", err);
+      showSnackbar("Failed to download waybills. Please try again.", "error");
     }
 
     setDownloading({ active: false, current: 0, total: 0 });
-
-    if (errors.length === 0) {
-      showSnackbar(
-        `${successCount} label${successCount !== 1 ? "s" : ""} downloaded to your Downloads folder`,
-        "success"
-      );
-    } else if (successCount > 0) {
-      showSnackbar(
-        `${successCount} downloaded; failed: ${errors.join(", ")}`,
-        "warning"
-      );
-    } else {
-      showSnackbar(`Failed to download labels: ${errors.join(", ")}`, "error");
-    }
   };
 
   const columns = [
