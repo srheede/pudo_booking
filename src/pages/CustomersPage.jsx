@@ -12,9 +12,11 @@ import {
   DialogActions,
   Alert,
   Snackbar,
+  TextField,
+  InputAdornment,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { Add, Edit, Delete } from "@mui/icons-material";
+import { Add, Edit, Delete, Search } from "@mui/icons-material";
 import config from "../../config.json";
 
 // Helper function to get Authorization header
@@ -48,6 +50,7 @@ const CustomersPage = () => {
     message: "",
     severity: "success",
   });
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     loadCustomers();
@@ -236,6 +239,37 @@ const CustomersPage = () => {
     },
   ];
 
+  const filteredCustomers = customers.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    const nameMatch = c.name?.toLowerCase().includes(q);
+    const emailMatch = c.email?.toLowerCase().includes(q);
+    const mobileMatch = c.mobile?.toLowerCase().includes(q);
+    const typeMatch = c.deliveryType?.toLowerCase().includes(q);
+    const lockerMatch =
+      c.deliveryType === "locker" &&
+      (c.lockerId?.toLowerCase().includes(q) ||
+        lockersMap[c.lockerId]?.toLowerCase().includes(q));
+    const kioskMatch =
+      c.deliveryType === "kiosk" &&
+      (c.kioskId?.toLowerCase().includes(q) ||
+        kiosksMap[c.kioskId]?.toLowerCase().includes(q));
+    const addressMatch =
+      c.deliveryType === "address" &&
+      (c.address?.street?.toLowerCase().includes(q) ||
+        c.address?.suburb?.toLowerCase().includes(q) ||
+        c.address?.city?.toLowerCase().includes(q));
+    return (
+      nameMatch ||
+      emailMatch ||
+      mobileMatch ||
+      typeMatch ||
+      lockerMatch ||
+      kioskMatch ||
+      addressMatch
+    );
+  });
+
   return (
     <Box sx={{ p: 3 }}>
       <Box
@@ -243,7 +277,7 @@ const CustomersPage = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 3,
+          mb: 2,
         }}
       >
         <Typography variant="h4" component="h1">
@@ -258,9 +292,24 @@ const CustomersPage = () => {
         </Button>
       </Box>
 
+      <TextField
+        size="small"
+        placeholder="Search customers…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        sx={{ mb: 2, width: 320 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       <Paper sx={{ height: 600, width: "100%" }}>
         <DataGrid
-          rows={customers}
+          rows={filteredCustomers}
           columns={columns}
           loading={loading}
           pageSizeOptions={[10, 25, 50]}

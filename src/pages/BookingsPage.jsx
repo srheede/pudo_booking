@@ -17,9 +17,11 @@ import {
   DialogActions,
   Chip,
   LinearProgress,
+  TextField,
+  InputAdornment,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { LocalShipping, Send } from "@mui/icons-material";
+import { LocalShipping, Send, Search } from "@mui/icons-material";
 import {
   customerService,
   bookingService,
@@ -101,6 +103,7 @@ const BookingsPage = () => {
   const [sender, setSender] = useState(null);
   const [lockersMap, setLockersMap] = useState({});
   const [kiosksMap, setKiosksMap] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     loadData();
@@ -425,6 +428,28 @@ const BookingsPage = () => {
     },
   ];
 
+  const filteredCustomers = customers.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    const nameMatch = c.name?.toLowerCase().includes(q);
+    const emailMatch = c.email?.toLowerCase().includes(q);
+    const typeMatch = c.deliveryType?.toLowerCase().includes(q);
+    const lockerMatch =
+      c.deliveryType === "locker" &&
+      (c.lockerId?.toLowerCase().includes(q) ||
+        lockersMap[c.lockerId]?.toLowerCase().includes(q));
+    const kioskMatch =
+      c.deliveryType === "kiosk" &&
+      (c.kioskId?.toLowerCase().includes(q) ||
+        kiosksMap[c.kioskId]?.toLowerCase().includes(q));
+    const addressMatch =
+      c.deliveryType === "address" &&
+      (c.address?.street?.toLowerCase().includes(q) ||
+        c.address?.suburb?.toLowerCase().includes(q) ||
+        c.address?.city?.toLowerCase().includes(q));
+    return nameMatch || emailMatch || typeMatch || lockerMatch || kioskMatch || addressMatch;
+  });
+
   return (
     <Box sx={{ p: 3 }}>
       <Box
@@ -432,7 +457,7 @@ const BookingsPage = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 3,
+          mb: 2,
         }}
       >
         <Typography variant="h4" component="h1">
@@ -466,6 +491,21 @@ const BookingsPage = () => {
         </Box>
       </Box>
 
+      <TextField
+        size="small"
+        placeholder="Search customers…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        sx={{ mb: 2, width: 320 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       {!sender && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Please configure your sender details before creating bookings.
@@ -474,7 +514,7 @@ const BookingsPage = () => {
 
       <Paper sx={{ height: 600, width: "100%" }}>
         <DataGrid
-          rows={customers}
+          rows={filteredCustomers}
           columns={columns}
           loading={loading}
           checkboxSelection

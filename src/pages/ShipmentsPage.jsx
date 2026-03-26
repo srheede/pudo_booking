@@ -18,6 +18,8 @@ import {
   LinearProgress,
   Tooltip,
   Stack,
+  TextField,
+  InputAdornment,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import {
@@ -30,6 +32,7 @@ import {
   Email,
   Block,
   Download,
+  Search,
 } from "@mui/icons-material";
 import { bookingService } from "../firebase/services";
 import config from "../../config.json";
@@ -112,6 +115,7 @@ const ShipmentsPage = () => {
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [downloading, setDownloading] = useState({ active: false, current: 0, total: 0 });
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     loadBookings();
@@ -399,6 +403,21 @@ const ShipmentsPage = () => {
     },
   ];
 
+  const filteredBookings = bookings.filter((b) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    const nameMatch = b.customerName?.toLowerCase().includes(q);
+    const refMatch = String(b.pudoRef ?? "").toLowerCase().includes(q);
+    const trackingMatch = b.shipmentData?.custom_tracking_reference
+      ?.toLowerCase()
+      .includes(q);
+    const statusMatch = b.status?.toLowerCase().includes(q);
+    const serviceLevelMatch = b.shipmentData?.service_level_code
+      ?.toLowerCase()
+      .includes(q);
+    return nameMatch || refMatch || trackingMatch || statusMatch || serviceLevelMatch;
+  });
+
   const { booking: viewBooking, apiData, apiLoading, apiError } = viewDialog;
   const displayData = apiData || viewBooking?.shipmentData;
   const isAlreadyCancelled = viewBooking?.status === "cancelled" || viewBooking?.status === "canceled";
@@ -479,6 +498,21 @@ const ShipmentsPage = () => {
         </Box>
       </Box>
 
+      <TextField
+        size="small"
+        placeholder="Search shipments…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        sx={{ mb: 2, width: 320 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       {downloading.active && (
         <Box sx={{ mb: 2 }}>
           <LinearProgress
@@ -493,7 +527,7 @@ const ShipmentsPage = () => {
 
       <Paper sx={{ height: 620, width: "100%" }}>
         <DataGrid
-          rows={bookings}
+          rows={filteredBookings}
           columns={columns}
           loading={loading}
           pageSizeOptions={[10, 25, 50]}
