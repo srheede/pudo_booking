@@ -1,0 +1,69 @@
+name: Build Windows Executable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_note:
+        description: "Optional note for this build (e.g. v1.2 hotfix)"
+        required: false
+        default: ""
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create config.json from secrets
+        shell: bash
+        run: |
+          cat > config.json << 'EOF'
+          {
+            "PUDO_API_KEY": "${{ secrets.PUDO_API_KEY }}",
+            "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
+            "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
+            "FIREBASE": {
+              "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
+              "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
+              "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
+              "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+              "appId": "${{ secrets.FIREBASE_APP_ID }}"
+            }
+          }
+          EOF
+
+      - name: Build Vite (React frontend)
+        run: npm run build
+
+      - name: Build Windows executable
+        run: npx electron-builder --win --publish=never
+
+      - name: Zip the installer
+        shell: pwsh
+        run: |
+          $exeFile = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1
+          if (-not $exeFile) {
+            Write-Error "No .exe file found in dist/"
+            exit 1
+          }
+          $zipName = "PudoBookingApp-Windows-${{ github.run_number }}.zip"
+          Compress-Archive -Path $exeFile.FullName -DestinationPath "dist\$zipName"
+          Write-Output "Created $zipName from $($exeFile.Name)"
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PudoBookingApp-Windows-${{ github.run_number }}
+          path: dist/*.zip
+          retention-days: 30
