@@ -115,6 +115,8 @@ const ShipmentsPage = () => {
   });
 
   const [selectedIds, setSelectedIds] = useState([]);
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [downloading, setDownloading] = useState({ active: false, current: 0, total: 0 });
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -452,6 +454,47 @@ const ShipmentsPage = () => {
     return nameMatch || refMatch || trackingMatch || statusMatch || serviceLevelMatch;
   });
 
+  const visibleBookings = filteredBookings.slice(
+    paginationModel.page * paginationModel.pageSize,
+    (paginationModel.page + 1) * paginationModel.pageSize
+  );
+  const allPageSelected =
+    visibleBookings.length > 0 &&
+    visibleBookings.every((b) => selectedIds.includes(b.id));
+  const showSelectAllBanner =
+    allPageSelected && !allFilteredSelected && filteredBookings.length > visibleBookings.length;
+
+  const handleSelectAllFiltered = () => {
+    setSelectedIds(filteredBookings.map((b) => b.id));
+    setAllFilteredSelected(true);
+  };
+
+  const handleSelectionChange = (newSelection) => {
+    const pageStart = paginationModel.page * paginationModel.pageSize;
+    const pageIds = new Set(
+      filteredBookings.slice(pageStart, pageStart + paginationModel.pageSize).map((b) => b.id)
+    );
+    const prevSet = new Set(selectedIds);
+
+    const offPageAdded = newSelection.some((id) => !prevSet.has(id) && !pageIds.has(id));
+
+    let finalSelection;
+    if (offPageAdded) {
+      finalSelection = [...new Set([...selectedIds, ...pageIds])];
+    } else if (newSelection.length === 0 && selectedIds.length > 0) {
+      // If everything was selected (via "select all" banner), clear the whole selection.
+      // Otherwise only remove the current page's items to preserve other pages.
+      finalSelection = allFilteredSelected
+        ? []
+        : selectedIds.filter((id) => !pageIds.has(id));
+    } else {
+      finalSelection = newSelection;
+    }
+
+    setSelectedIds(finalSelection);
+    setAllFilteredSelected(false);
+  };
+
   const { booking: viewBooking, apiData, apiLoading, apiError } = viewDialog;
   const displayData = apiData || viewBooking?.shipmentData;
   const isAlreadyCancelled = viewBooking?.status === "cancelled" || viewBooking?.status === "canceled";
@@ -536,7 +579,7 @@ const ShipmentsPage = () => {
         size="small"
         placeholder="Search shipments…"
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        onChange={(e) => { setSearchQuery(e.target.value); setAllFilteredSelected(false); }}
         sx={{ mb: 2, width: 320 }}
         InputProps={{
           startAdornment: (
@@ -559,19 +602,49 @@ const ShipmentsPage = () => {
         </Box>
       )}
 
+      {showSelectAllBanner && (
+        <Alert
+          severity="info"
+          sx={{ mb: 1 }}
+          action={
+            <Button size="small" color="inherit" onClick={handleSelectAllFiltered}>
+              Select all {filteredBookings.length} items
+            </Button>
+          }
+        >
+          All {visibleBookings.length} items on this page are selected.
+        </Alert>
+      )}
+      {allFilteredSelected && (
+        <Alert
+          severity="info"
+          sx={{ mb: 1 }}
+          action={
+            <Button
+              size="small"
+              color="inherit"
+              onClick={() => { setSelectedIds([]); setAllFilteredSelected(false); }}
+            >
+              Clear selection
+            </Button>
+          }
+        >
+          All {filteredBookings.length} items are selected.
+        </Alert>
+      )}
+
       <Paper sx={{ height: 620, width: "100%" }}>
         <DataGrid
           rows={filteredBookings}
           columns={columns}
           loading={loading}
           pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: { paginationModel: { page: 0, pageSize: 10 } },
-          }}
           checkboxSelection
           disableRowSelectionOnClick
           rowSelectionModel={selectedIds}
-          onRowSelectionModelChange={(newSelection) => setSelectedIds(newSelection)}
+          onRowSelectionModelChange={handleSelectionChange}
+          paginationModel={paginationModel}
+          onPaginationModelChange={setPaginationModel}
           sx={{ "& .MuiDataGrid-cell": { alignItems: "center" } }}
         />
       </Paper>

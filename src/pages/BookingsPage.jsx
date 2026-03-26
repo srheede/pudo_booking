@@ -87,6 +87,8 @@ const toZoneCode = (province) => {
 const BookingsPage = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [defaultSize, setDefaultSize] = useState("XS");
   const [customerSizes, setCustomerSizes] = useState({});
   const [loading, setLoading] = useState(true);
@@ -169,16 +171,55 @@ const BookingsPage = () => {
   };
 
   const handleSelectionChange = (newSelection) => {
-    setSelectedCustomers(newSelection);
+    // visibleCustomers is derived from filteredCustomers + paginationModel below,
+    // but we can recompute it here to keep this handler self-contained.
+    const pageStart = paginationModel.page * paginationModel.pageSize;
+    const pageIds = new Set(
+      filteredCustomers.slice(pageStart, pageStart + paginationModel.pageSize).map((c) => c.id)
+    );
+    const prevSet = new Set(selectedCustomers);
+
+    // If any newly-added IDs are from outside the current page the DataGrid's
+    // built-in "select all rows" header was clicked → clip to page only.
+    const offPageAdded = newSelection.some((id) => !prevSet.has(id) && !pageIds.has(id));
+
+    let finalSelection;
+    if (offPageAdded) {
+      // Select all header clicked: merge current page into existing selection
+      finalSelection = [...new Set([...selectedCustomers, ...pageIds])];
+    } else if (newSelection.length === 0 && selectedCustomers.length > 0) {
+      // Deselect all header clicked.
+      // If everything was selected (via "select all" banner), clear the whole selection.
+      // Otherwise only remove the current page's items to preserve other pages.
+      finalSelection = allFilteredSelected
+        ? []
+        : selectedCustomers.filter((id) => !pageIds.has(id));
+    } else {
+      finalSelection = newSelection;
+    }
+
+    setSelectedCustomers(finalSelection);
+    setAllFilteredSelected(false);
 
     // Initialize sizes for newly selected customers
     const newSizes = { ...customerSizes };
-    newSelection.forEach((customerId) => {
+    finalSelection.forEach((customerId) => {
       if (!newSizes[customerId]) {
         newSizes[customerId] = defaultSize;
       }
     });
     setCustomerSizes(newSizes);
+  };
+
+  const handleSelectAllFiltered = () => {
+    const allIds = filteredCustomers.map((c) => c.id);
+    const newSizes = { ...customerSizes };
+    allIds.forEach((id) => {
+      if (!newSizes[id]) newSizes[id] = defaultSize;
+    });
+    setCustomerSizes(newSizes);
+    setSelectedCustomers(allIds);
+    setAllFilteredSelected(true);
   };
 
   const handleSizeChange = (customerId, size) => {
@@ -450,6 +491,16 @@ const BookingsPage = () => {
     return nameMatch || emailMatch || typeMatch || lockerMatch || kioskMatch || addressMatch;
   });
 
+  const visibleCustomers = filteredCustomers.slice(
+    paginationModel.page * paginationModel.pageSize,
+    (paginationModel.page + 1) * paginationModel.pageSize
+  );
+  const allPageSelected =
+    visibleCustomers.length > 0 &&
+    visibleCustomers.every((c) => selectedCustomers.includes(c.id));
+  const showSelectAllBanner =
+    allPageSelected && !allFilteredSelected && filteredCustomers.length > visibleCustomers.length;
+
   return (
     <Box sx={{ p: 3 }}>
       <Box
@@ -495,7 +546,7 @@ const BookingsPage = () => {
         size="small"
         placeholder="Search customers…"
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        onChange={(e) => { setSearchQuery(e.target.value); setAllFilteredSelected(false); }}
         sx={{ mb: 2, width: 320 }}
         InputProps={{
           startAdornment: (
@@ -512,6 +563,37 @@ const BookingsPage = () => {
         </Alert>
       )}
 
+      {showSelectAllBanner && (
+        <Alert
+          severity="info"
+          sx={{ mb: 1 }}
+          action={
+            <Button size="small" color="inherit" onClick={handleSelectAllFiltered}>
+              Select all {filteredCustomers.length} items
+            </Button>
+          }
+        >
+          All {visibleCustomers.length} items on this page are selected.
+        </Alert>
+      )}
+      {allFilteredSelected && (
+        <Alert
+          severity="info"
+          sx={{ mb: 1 }}
+          action={
+            <Button
+              size="small"
+              color="inherit"
+              onClick={() => { setSelectedCustomers([]); setAllFilteredSelected(false); }}
+            >
+              Clear selection
+            </Button>
+          }
+        >
+          All {filteredCustomers.length} items are selected.
+        </Alert>
+      )}
+
       <Paper sx={{ height: 600, width: "100%" }}>
         <DataGrid
           rows={filteredCustomers}
@@ -520,12 +602,9 @@ const BookingsPage = () => {
           checkboxSelection
           rowSelectionModel={selectedCustomers}
           onRowSelectionModelChange={handleSelectionChange}
+          paginationModel={paginationModel}
+          onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: {
-              paginationModel: { page: 0, pageSize: 10 },
-            },
-          }}
         />
       </Paper>
 
