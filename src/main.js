@@ -171,37 +171,18 @@ ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
 });
 
 // Download the official PUDO waybill PDF for a shipment.
-// The PUDO API returns a signed S3 URL; we fetch the PDF binary and save it
-// to the user's Downloads folder, then reveal it in Finder/Explorer.
+// The PUDO API streams the PDF binary directly (not a signed URL).
 ipcMain.handle("download-waybill", async (event, { shipmentId, trackingRef }) => {
   try {
-    // Step 1: get signed S3 URL from PUDO
-    const urlResponse = await axios.get(`${WAYBILL_BASE_URL}/${shipmentId}`, {
+    const response = await axios.get(`${STICKER_BASE_URL}/${shipmentId}`, {
       params: { api_key: config.PUDO_API_KEY },
+      responseType: "arraybuffer",
     });
 
-    // The response may be a plain URL string or an object with a url/link field
-    let signedUrl;
-    if (typeof urlResponse.data === "string") {
-      signedUrl = urlResponse.data.trim();
-    } else if (urlResponse.data?.url) {
-      signedUrl = urlResponse.data.url;
-    } else if (urlResponse.data?.link) {
-      signedUrl = urlResponse.data.link;
-    } else {
-      throw new Error("Unexpected response format from waybill endpoint: " + JSON.stringify(urlResponse.data));
-    }
-
-    // Step 2: download the PDF binary
-    const pdfResponse = await axios.get(signedUrl, { responseType: "arraybuffer" });
-
-    // Step 3: save to Downloads folder
     const downloadsPath = app.getPath("downloads");
     const filename = `${trackingRef || shipmentId}.pdf`;
     const filepath = path.join(downloadsPath, filename);
-    fs.writeFileSync(filepath, Buffer.from(pdfResponse.data));
-
-    // Step 4: reveal in file manager
+    fs.writeFileSync(filepath, Buffer.from(response.data));
     shell.showItemInFolder(filepath);
 
     return { success: true, filepath, filename };

@@ -284,14 +284,21 @@ const ShipmentsPage = () => {
         if (ipcRenderer) {
           await ipcRenderer.invoke("download-waybill", { shipmentId, trackingRef });
         } else {
-          // Browser fallback: open the signed URL in a new tab
+          // Browser dev fallback: use the Vite proxy (/pudo-generate → api-pudo.co.za/generate)
+          // to avoid CORS. The API returns the PDF binary directly.
           const res = await fetch(
-            `https://api-pudo.co.za/generate/waybill/${shipmentId}?api_key=${config.PUDO_API_KEY}`
+            `/pudo-generate/sticker/${shipmentId}?api_key=${config.PUDO_API_KEY}`
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json().catch(() => res.text());
-          const url = typeof data === "string" ? data.trim() : data?.url || data?.link;
-          if (url) window.open(url, "_blank");
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `${trackingRef}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         }
         successCount++;
       } catch (err) {
