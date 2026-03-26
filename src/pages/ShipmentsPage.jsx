@@ -50,12 +50,15 @@ const ipcRenderer = window.require
 
 const STATUS_CONFIG = {
   created: { label: "Created", color: "info" },
-  "deposit-pending": { label: "Pending", color: "default" },
-  "collection-pending": { label: "Pending", color: "default" },
+  submitted: { label: "Submitted", color: "info" },
+  "deposit-pending": { label: "Deposit Pending", color: "default" },
+  "collection-pending": { label: "Collection Pending", color: "default" },
   pending: { label: "Pending", color: "default" },
   collected: { label: "Collected", color: "warning" },
   "in-transit": { label: "In Transit", color: "primary" },
   in_transit: { label: "In Transit", color: "primary" },
+  "in-locker": { label: "In Locker", color: "secondary" },
+  in_locker: { label: "In Locker", color: "secondary" },
   "out-for-delivery": { label: "Out for Delivery", color: "primary" },
   delivered: { label: "Delivered", color: "success" },
   "delivery-failed-attempt": { label: "Failed Attempt", color: "error" },
@@ -143,28 +146,31 @@ const ShipmentsPage = () => {
     if (!localBookings?.length) return;
     setSyncing(true);
     try {
-      let pudoShipments;
-      if (ipcRenderer) {
-        pudoShipments = await ipcRenderer.invoke("get-all-shipments");
-      } else {
-        const response = await fetch(`${config.API_BASE_URL}/shipments`, {
-          headers: getAuthHeaders(),
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        pudoShipments = await response.json();
+      // Fetch each shipment individually so we always get the correct live
+      // status regardless of any pagination or date-window limits on the
+      // bulk GET /shipments endpoint.
+      const CONCURRENCY = 5;
+      const results = new Map(); // pudoRef → liveStatus
+
+      const fetchOne = async (booking) => {
+        if (!booking.pudoRef) return;
+        try {
+          const data = await fetchShipmentFromAPI(booking.pudoRef);
+          const liveStatus = data?.status;
+          if (liveStatus) results.set(String(booking.pudoRef), liveStatus);
+        } catch {
+          // Individual failures are non-fatal; keep existing status
+        }
+      };
+
+      // Run in batches of CONCURRENCY to avoid flooding the API
+      for (let i = 0; i < localBookings.length; i += CONCURRENCY) {
+        await Promise.all(localBookings.slice(i, i + CONCURRENCY).map(fetchOne));
       }
-
-      if (!Array.isArray(pudoShipments)) return;
-
-      // Build map: numeric PUDO shipment id → live status
-      const pudoStatusMap = {};
-      pudoShipments.forEach((s) => {
-        if (s.id != null) pudoStatusMap[String(s.id)] = s.status;
-      });
 
       // Apply live statuses; persist any changes back to Firestore
       const updated = localBookings.map((booking) => {
-        const liveStatus = pudoStatusMap[String(booking.pudoRef)];
+        const liveStatus = results.get(String(booking.pudoRef));
         if (liveStatus && liveStatus !== booking.status) {
           bookingService.update(booking.id, { status: liveStatus }).catch(console.error);
           return { ...booking, status: liveStatus };
