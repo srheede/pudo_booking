@@ -1,0 +1,87 @@
+name: Build Windows Executable (Public / Subscription)
+
+# Builds the public-mode version of the app that connects to the
+# pudo-booking-pub Firebase project. Users log in with accounts created
+# on the subscription homepage and must have an active subscription.
+#
+# Required GitHub secrets (separate from the internal build):
+#   PUB_API_BASE_URL                  — https://api-pudo.co.za/api/v1
+#   PUB_GOOGLE_MAPS_API_KEY           — Google Maps API key (can share with internal)
+#   PUB_FIREBASE_API_KEY              — Firebase API key for pudo-booking-pub
+#   PUB_FIREBASE_AUTH_DOMAIN          — pudo-booking-pub.firebaseapp.com
+#   PUB_FIREBASE_PROJECT_ID           — pudo-booking-pub
+#   PUB_FIREBASE_STORAGE_BUCKET       — pudo-booking-pub.firebasestorage.app
+#   PUB_FIREBASE_MESSAGING_SENDER_ID  — 418497457347
+#   PUB_FIREBASE_APP_ID               — 1:418497457347:web:f2e7ccf9fa94b603420676
+#   PUB_FIREBASE_MEASUREMENT_ID       — G-WPJJD30M12
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_note:
+        description: "Optional note for this build (e.g. v1.0 public release)"
+        required: false
+        default: ""
+
+jobs:
+  build-windows-public:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create config.json for public mode
+        shell: bash
+        run: |
+          cat > config.json << 'EOF'
+          {
+            "PUBLIC_MODE": true,
+            "PUDO_API_KEY": "",
+            "API_BASE_URL": "${{ secrets.PUB_API_BASE_URL }}",
+            "GOOGLE_MAPS_API_KEY": "${{ secrets.PUB_GOOGLE_MAPS_API_KEY }}",
+            "FIREBASE": {
+              "apiKey": "${{ secrets.PUB_FIREBASE_API_KEY }}",
+              "authDomain": "${{ secrets.PUB_FIREBASE_AUTH_DOMAIN }}",
+              "projectId": "${{ secrets.PUB_FIREBASE_PROJECT_ID }}",
+              "storageBucket": "${{ secrets.PUB_FIREBASE_STORAGE_BUCKET }}",
+              "messagingSenderId": "${{ secrets.PUB_FIREBASE_MESSAGING_SENDER_ID }}",
+              "appId": "${{ secrets.PUB_FIREBASE_APP_ID }}",
+              "measurementId": "${{ secrets.PUB_FIREBASE_MEASUREMENT_ID }}"
+            }
+          }
+          EOF
+
+      - name: Build Vite (React frontend)
+        run: npm run build
+
+      - name: Build Windows executable
+        run: npx electron-builder --win --publish=never
+
+      - name: Zip the installer
+        shell: pwsh
+        run: |
+          $exeFile = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1
+          if (-not $exeFile) {
+            Write-Error "No .exe file found in dist/"
+            exit 1
+          }
+          $zipName = "PudoBookingApp-Public-${{ github.run_number }}.zip"
+          Compress-Archive -Path $exeFile.FullName -DestinationPath "dist\$zipName"
+          Write-Output "Created $zipName from $($exeFile.Name)"
+
+      - name: Upload public build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PudoBookingApp-Public-${{ github.run_number }}
+          path: dist/*.zip
+          retention-days: 90

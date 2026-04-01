@@ -36,6 +36,7 @@ import {
   Search,
 } from "@mui/icons-material";
 import { bookingService } from "../firebase/services";
+import { useAuth } from "../contexts/AuthContext";
 import config from "../../config.json";
 
 const getAuthHeaders = () => ({
@@ -93,6 +94,7 @@ const getStatusConfig = (status) =>
   STATUS_CONFIG[status?.toLowerCase?.()] || { label: status || "Unknown", color: "default" };
 
 const ShipmentsPage = () => {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -130,7 +132,7 @@ const ShipmentsPage = () => {
   const loadBookings = async () => {
     try {
       setLoading(true);
-      const data = await bookingService.getAll();
+      const data = await bookingService.getAll(user?.uid);
       setBookings(data);
       // Sync live PUDO statuses in the background after loading local records
       syncPudoStatuses(data);
@@ -172,7 +174,7 @@ const ShipmentsPage = () => {
       const updated = localBookings.map((booking) => {
         const liveStatus = results.get(String(booking.pudoRef));
         if (liveStatus && liveStatus !== booking.status) {
-          bookingService.update(booking.id, { status: liveStatus }).catch(console.error);
+          bookingService.update(user?.uid, booking.id, { status: liveStatus }).catch(console.error);
           return { ...booking, status: liveStatus };
         }
         return booking;
@@ -263,7 +265,7 @@ const ShipmentsPage = () => {
       }
 
       // Only update Firestore after a successful API call
-      await bookingService.update(booking.id, { status: "cancelled" });
+      await bookingService.update(user?.uid, booking.id, { status: "cancelled" });
 
       showSnackbar("Shipment cancelled successfully");
       setCancelDialog({ open: false, booking: null, cancelling: false });

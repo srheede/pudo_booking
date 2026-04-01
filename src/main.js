@@ -8,9 +8,21 @@ const { PDFDocument } = require("pdf-lib");
 const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
 const STICKER_BASE_URL = "https://api-pudo.co.za/generate/sticker";
 
-// Helper function to get Authorization header
+/**
+ * In PUBLIC_MODE the renderer sends the user's PUDO API key via IPC after
+ * login.  In internal mode we use the key baked into config.json.
+ */
+let runtimePudoApiKey = null;
+
+const getPudoApiKey = () => {
+  if (config.PUBLIC_MODE) {
+    return runtimePudoApiKey ?? "";
+  }
+  return config.PUDO_API_KEY ?? "";
+};
+
 const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  Authorization: `Bearer ${getPudoApiKey()}`,
   "Content-Type": "application/json",
   Accept: "application/json",
 });
@@ -18,7 +30,6 @@ const getAuthHeaders = () => ({
 let mainWindow;
 
 function createWindow() {
-  // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -30,15 +41,17 @@ function createWindow() {
     icon: path.join(__dirname, "../assets/icon.png"),
   });
 
-  // Load the app - always use built files for consistency
+  const isDev = process.env.NODE_ENV === "development" || process.env.ELECTRON_DEV === "1";
   const buildPath = path.join(__dirname, "../build/index.html");
   const buildExists = fs.existsSync(buildPath);
 
-  if (buildExists) {
-    // Always use built files when they exist
+  if (isDev) {
+    // Load from Vite dev server for hot-reload during development
+    mainWindow.loadURL("http://localhost:3000");
+    mainWindow.webContents.openDevTools();
+  } else if (buildExists) {
     mainWindow.loadFile(buildPath);
   } else {
-    // Error case - no build files found
     console.error("No build files found. Please run 'npm run build' first.");
     app.quit();
   }
@@ -48,7 +61,6 @@ function createWindow() {
   });
 }
 
-// App event listeners
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
@@ -63,14 +75,23 @@ app.on("activate", () => {
   }
 });
 
-// IPC handlers for Pudo API
+// ─── API Key Management (PUBLIC_MODE) ────────────────────────────────────────
+
+ipcMain.handle("set-pudo-api-key", (_, apiKey) => {
+  runtimePudoApiKey = apiKey ?? null;
+});
+
+ipcMain.handle("get-public-mode", () => {
+  return config.PUBLIC_MODE === true;
+});
+
+// ─── Pudo API IPC Handlers ───────────────────────────────────────────────────
+
 ipcMain.handle("search-terminals", async (event, query) => {
   try {
     const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
       headers: getAuthHeaders(),
     });
-
-    // Filter lockers based on query if provided
     let lockers = response.data;
     if (query && query.trim().length > 0) {
       const searchTerm = query.toLowerCase();
@@ -81,7 +102,6 @@ ipcMain.handle("search-terminals", async (event, query) => {
           (locker.address && locker.address.toLowerCase().includes(searchTerm))
       );
     }
-
     return lockers;
   } catch (error) {
     console.error("Error searching terminals:", error);
@@ -94,9 +114,7 @@ ipcMain.handle("create-shipment", async (event, payload) => {
     const response = await axios.post(
       `${config.API_BASE_URL}/shipments`,
       payload,
-      {
-        headers: getAuthHeaders(),
-      }
+      { headers: getAuthHeaders() }
     );
     return response.data;
   } catch (error) {
@@ -105,12 +123,11 @@ ipcMain.handle("create-shipment", async (event, payload) => {
   }
 });
 
-ipcMain.handle("get-all-terminals", async (event) => {
+ipcMain.handle("get-all-terminals", async () => {
   try {
     const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
       headers: getAuthHeaders(),
     });
-
     return response.data;
   } catch (error) {
     console.error("Error getting terminals:", error);
@@ -118,7 +135,7 @@ ipcMain.handle("get-all-terminals", async (event) => {
   }
 });
 
-ipcMain.handle("get-all-shipments", async (event) => {
+ipcMain.handle("get-all-shipments", async () => {
   try {
     const response = await axios.get(`${config.API_BASE_URL}/shipments`, {
       headers: getAuthHeaders(),
@@ -171,8 +188,8 @@ ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
   }
 });
 
-// Combine multiple waybill PDFs onto A4 pages with 6 waybills per page (2 cols × 3 rows).
-// Each waybill is scaled to 1/6 of the A4 area regardless of how many are selected.
+// ─── Waybill PDF Combine ─────────────────────────────────────────────────────
+
 async function combineWaybillPdfs(pdfBuffers) {
   const A4_W = 595.28;
   const A4_H = 841.89;
@@ -213,15 +230,13 @@ async function combineWaybillPdfs(pdfBuffers) {
   return combinedDoc.save();
 }
 
-// Download and combine PUDO waybill PDFs — fits 6 per A4 page (2 cols × 3 rows).
-// Accepts an array of { shipmentId, trackingRef } objects.
 ipcMain.handle("download-waybills-combined", async (event, shipments) => {
   try {
     const pdfBuffers = await Promise.all(
       shipments.map(({ shipmentId }) =>
         axios
           .get(`${STICKER_BASE_URL}/${shipmentId}`, {
-            params: { api_key: config.PUDO_API_KEY },
+            params: { api_key: getPudoApiKey() },
             responseType: "arraybuffer",
           })
           .then((r) => r.data)

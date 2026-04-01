@@ -13,6 +13,27 @@ import {
 } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext";
 
+const getFriendlyAuthError = (error) => {
+  switch (error.code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "No account found with these credentials. Please check your email and password, or sign up for a new account.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/email-already-in-use":
+      return "An account with this email already exists. Try signing in instead.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters long.";
+    case "auth/too-many-requests":
+      return "Too many failed attempts. Please wait a moment before trying again.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your connection and try again.";
+    default:
+      return error.message;
+  }
+};
+
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,10 +55,8 @@ const LoginPage = () => {
 
     try {
       if (tabValue === 0) {
-        // Sign in
         await signIn(email, password);
       } else {
-        // Sign up
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match");
         }
@@ -47,7 +66,7 @@ const LoginPage = () => {
         await signUp(email, password);
       }
     } catch (error) {
-      setError(error.message);
+      setError(getFriendlyAuthError(error));
     } finally {
       setLoading(false);
     }

@@ -12,185 +12,162 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import { 
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
 } from "firebase/auth";
 import { db, auth } from "./config";
+import config from "../../config.json";
 
-// Authentication Services
+/**
+ * In PUBLIC_MODE, all data lives under users/{uid}/<collection>.
+ * In internal mode, data lives at the root <collection> level (original behaviour).
+ */
+const getCollectionRef = (uid, collectionName) => {
+  if (config.PUBLIC_MODE && uid) {
+    return collection(db, "users", uid, collectionName);
+  }
+  return collection(db, collectionName);
+};
+
+const getDocRef = (uid, collectionName, docId) => {
+  if (config.PUBLIC_MODE && uid) {
+    return doc(db, "users", uid, collectionName, docId);
+  }
+  return doc(db, collectionName, docId);
+};
+
+// ─── Authentication ──────────────────────────────────────────────────────────
+
 export const authService = {
-  // Sign up with email and password
   async signUp(email, password) {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
-    } catch (error) {
-      throw error;
-    }
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
   },
 
-  // Sign in with email and password
   async signIn(email, password) {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
-    } catch (error) {
-      throw error;
-    }
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
   },
 
-  // Sign out
   async signOut() {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      throw error;
-    }
+    await signOut(auth);
   },
 
-  // Get current user
   getCurrentUser() {
     return auth.currentUser;
   },
 
-  // Listen to auth state changes
   onAuthStateChanged(callback) {
     return onAuthStateChanged(auth, callback);
   },
 };
 
-// Customer Services
+// ─── User Profile (PUBLIC_MODE only) ─────────────────────────────────────────
+
+export const userProfileService = {
+  async get(uid) {
+    const ref = doc(db, "users", uid);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  },
+
+  async savePudoApiKey(uid, pudoApiKey) {
+    const ref = doc(db, "users", uid);
+    await setDoc(ref, { pudoApiKey, updatedAt: serverTimestamp() }, { merge: true });
+  },
+};
+
+// ─── Customers ───────────────────────────────────────────────────────────────
+
 export const customerService = {
-  // Get all customers
-  async getAll() {
-    const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+  async getAll(uid) {
+    const q = query(getCollectionRef(uid, "customers"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   },
 
-  // Add new customer
-  async add(customerData) {
-    const docRef = await addDoc(collection(db, "customers"), {
+  async add(uid, customerData) {
+    const ref = await addDoc(getCollectionRef(uid, "customers"), {
       ...customerData,
       createdAt: serverTimestamp(),
     });
-    return docRef.id;
+    return ref.id;
   },
 
-  // Update customer
-  async update(id, customerData) {
-    const customerRef = doc(db, "customers", id);
-    await updateDoc(customerRef, {
-      ...customerData,
-      updatedAt: serverTimestamp(),
-    });
+  async update(uid, id, customerData) {
+    const ref = getDocRef(uid, "customers", id);
+    await updateDoc(ref, { ...customerData, updatedAt: serverTimestamp() });
   },
 
-  // Delete customer
-  async delete(id) {
-    const customerRef = doc(db, "customers", id);
-    await deleteDoc(customerRef);
+  async delete(uid, id) {
+    await deleteDoc(getDocRef(uid, "customers", id));
   },
 
-  // Get customer by ID
-  async getById(id) {
-    const customerRef = doc(db, "customers", id);
-    const customerSnap = await getDoc(customerRef);
-    if (customerSnap.exists()) {
-      return { id: customerSnap.id, ...customerSnap.data() };
-    }
+  async getById(uid, id) {
+    const ref = getDocRef(uid, "customers", id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) return { id: snap.id, ...snap.data() };
     return null;
   },
 };
 
-// Sender Services
+// ─── Sender ──────────────────────────────────────────────────────────────────
+
 export const senderService = {
-  // Get sender details
-  async get() {
-    const senderRef = doc(db, "sender", "default");
-    const senderSnap = await getDoc(senderRef);
-    if (senderSnap.exists()) {
-      return senderSnap.data();
-    }
+  async get(uid) {
+    const ref = getDocRef(uid, "sender", "default");
+    const snap = await getDoc(ref);
+    if (snap.exists()) return snap.data();
     return null;
   },
 
-  // Update sender details (creates if doesn't exist)
-  async update(senderData) {
-    const senderRef = doc(db, "sender", "default");
-    await setDoc(
-      senderRef,
-      {
-        ...senderData,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+  async update(uid, senderData) {
+    const ref = getDocRef(uid, "sender", "default");
+    await setDoc(ref, { ...senderData, updatedAt: serverTimestamp() }, { merge: true });
   },
 
-  // Create initial sender record
-  async create(senderData) {
-    const senderRef = doc(db, "sender", "default");
-    await setDoc(senderRef, {
-      ...senderData,
-      createdAt: serverTimestamp(),
-    });
+  async create(uid, senderData) {
+    const ref = getDocRef(uid, "sender", "default");
+    await setDoc(ref, { ...senderData, createdAt: serverTimestamp() });
   },
 };
 
-// Booking Services
+// ─── Bookings ────────────────────────────────────────────────────────────────
+
 export const bookingService = {
-  // Get all bookings
-  async getAll() {
-    const q = query(collection(db, "bookings"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+  async getAll(uid) {
+    const q = query(getCollectionRef(uid, "bookings"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   },
 
-  // Add new booking
-  async add(bookingData) {
-    const docRef = await addDoc(collection(db, "bookings"), {
+  async add(uid, bookingData) {
+    const ref = await addDoc(getCollectionRef(uid, "bookings"), {
       ...bookingData,
       createdAt: serverTimestamp(),
     });
-    return docRef.id;
+    return ref.id;
   },
 
-  // Update booking
-  async update(id, bookingData) {
-    const bookingRef = doc(db, "bookings", id);
-    await updateDoc(bookingRef, {
-      ...bookingData,
-      updatedAt: serverTimestamp(),
-    });
+  async update(uid, id, bookingData) {
+    const ref = getDocRef(uid, "bookings", id);
+    await updateDoc(ref, { ...bookingData, updatedAt: serverTimestamp() });
   },
 
-  // Delete booking
-  async delete(id) {
-    const bookingRef = doc(db, "bookings", id);
-    await deleteDoc(bookingRef);
+  async delete(uid, id) {
+    await deleteDoc(getDocRef(uid, "bookings", id));
   },
 
-  // Get bookings by customer
-  async getByCustomer(customerId) {
+  async getByCustomer(uid, customerId) {
     const q = query(
-      collection(db, "bookings"),
+      getCollectionRef(uid, "bookings"),
       where("customerId", "==", customerId),
       orderBy("createdAt", "desc")
     );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   },
 };

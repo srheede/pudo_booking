@@ -1,22 +1,26 @@
 rules_version = '2';
+// Rules for the pudo-booking (INTERNAL) Firebase project.
+// The public subscription project (pudo-booking-pub) has its own rules in
+// the pudo_booking_homepage repo.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Require authentication for all operations
-    match /{document=**} {
+
+    // Flat collections shared by all authenticated users.
+    match /customers/{customerId} {
       allow read, write: if request.auth != null;
     }
-    
-    // Optional: More specific rules for different collections
-    // match /customers/{customerId} {
-    //   allow read, write: if request.auth != null;
-    // }
-    
-    // match /bookings/{bookingId} {
-    //   allow read, write: if request.auth != null;
-    // }
-    
-    // match /sender/{senderId} {
-    //   allow read, write: if request.auth != null;
-    // }
+
+    match /bookings/{bookingId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /sender/{senderId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
-} 
+}

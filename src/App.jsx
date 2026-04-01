@@ -30,6 +30,8 @@ import SenderPage from "./pages/SenderPage.jsx";
 import BookingsPage from "./pages/BookingsPage.jsx";
 import ShipmentsPage from "./pages/ShipmentsPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ApiKeySetupPage from "./pages/ApiKeySetupPage.jsx";
+import SubscriptionExpiredPage from "./pages/SubscriptionExpiredPage.jsx";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const theme = createTheme({
@@ -50,7 +52,7 @@ const AppContent = () => {
   const [currentPage, setCurrentPage] = useState("customers");
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const { user, signOut, loading } = useAuth();
+  const { user, signOut, loading, subscriptionValid, pudoApiKey, publicMode } = useAuth();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -114,6 +116,7 @@ const AppContent = () => {
     </div>
   );
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <ThemeProvider theme={theme}>
@@ -132,6 +135,7 @@ const AppContent = () => {
     );
   }
 
+  // ── Not authenticated ──────────────────────────────────────────────────────
   if (!user) {
     return (
       <ThemeProvider theme={theme}>
@@ -141,6 +145,27 @@ const AppContent = () => {
     );
   }
 
+  // ── Subscription expired / payment failed (PUBLIC_MODE only) ──────────────
+  if (publicMode && !subscriptionValid) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <SubscriptionExpiredPage />
+      </ThemeProvider>
+    );
+  }
+
+  // ── PUDO API key not yet set (PUBLIC_MODE only) ────────────────────────────
+  if (publicMode && !pudoApiKey) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ApiKeySetupPage />
+      </ThemeProvider>
+    );
+  }
+
+  // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -193,7 +218,7 @@ const AppContent = () => {
             open={mobileOpen}
             onClose={handleDrawerToggle}
             ModalProps={{
-              keepMounted: true, // Better open performance on mobile.
+              keepMounted: true,
             }}
             sx={{
               display: { xs: "block", md: "none" },
@@ -225,7 +250,7 @@ const AppContent = () => {
           sx={{
             flexGrow: 1,
             width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-            mt: 8, // Account for AppBar height
+            mt: 8,
           }}
         >
           {renderPage()}

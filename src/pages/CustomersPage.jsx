@@ -26,6 +26,7 @@ const getAuthHeaders = () => ({
   Accept: "application/json",
 });
 import { customerService } from "../firebase/services";
+import { useAuth } from "../contexts/AuthContext";
 import CustomerForm from "../components/CustomerForm.jsx";
 import LockerAutocomplete, {
   clearLockersCache,
@@ -37,6 +38,7 @@ const ipcRenderer = window.require
   : null;
 
 const CustomersPage = () => {
+  const { user } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -59,7 +61,7 @@ const CustomersPage = () => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const customersData = await customerService.getAll();
+      const customersData = await customerService.getAll(user?.uid);
       setCustomers(customersData);
       await loadLockersData();
     } catch (error) {
@@ -129,10 +131,10 @@ const CustomersPage = () => {
   const handleSaveCustomer = async (customerData) => {
     try {
       if (selectedCustomer) {
-        await customerService.update(selectedCustomer.id, customerData);
+        await customerService.update(user?.uid, selectedCustomer.id, customerData);
         showSnackbar("Customer updated successfully");
       } else {
-        await customerService.add(customerData);
+        await customerService.add(user?.uid, customerData);
         showSnackbar("Customer added successfully");
       }
       await loadCustomers();
@@ -144,7 +146,7 @@ const CustomersPage = () => {
 
   const confirmDelete = async () => {
     try {
-      await customerService.delete(customerToDelete.id);
+      await customerService.delete(user?.uid, customerToDelete.id);
       showSnackbar("Customer deleted successfully");
       await loadCustomers();
     } catch (error) {

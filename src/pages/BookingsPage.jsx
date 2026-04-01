@@ -27,6 +27,7 @@ import {
   bookingService,
   senderService,
 } from "../firebase/services";
+import { useAuth } from "../contexts/AuthContext";
 import {
   clearLockersCache,
   isCacheValid,
@@ -85,6 +86,7 @@ const toZoneCode = (province) => {
 };
 
 const BookingsPage = () => {
+  const { user } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
@@ -115,8 +117,8 @@ const BookingsPage = () => {
     try {
       setLoading(true);
       const [customersData, senderData] = await Promise.all([
-        customerService.getAll(),
-        senderService.get(),
+        customerService.getAll(user?.uid),
+        senderService.get(user?.uid),
       ]);
       setCustomers(customersData);
       setSender(senderData);
@@ -338,7 +340,7 @@ const BookingsPage = () => {
           }
 
           // Save booking to Firebase
-          await bookingService.add({
+          await bookingService.add(user?.uid, {
             customerId: customer.id,
             customerName: customer.name,
             lockerSize: size,

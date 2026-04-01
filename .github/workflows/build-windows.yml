@@ -30,6 +30,7 @@ jobs:
         run: |
           cat > config.json << 'EOF'
           {
+            "PUBLIC_MODE": false,
             "PUDO_API_KEY": "${{ secrets.PUDO_API_KEY }}",
             "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
             "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",

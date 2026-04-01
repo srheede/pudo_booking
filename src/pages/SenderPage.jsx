@@ -17,11 +17,13 @@ import {
 } from "@mui/material";
 import { Save } from "@mui/icons-material";
 import { senderService } from "../firebase/services";
+import { useAuth } from "../contexts/AuthContext";
 import LockerAutocomplete from "../components/LockerAutocomplete.jsx";
 import KioskAutocomplete from "../components/KioskAutocomplete.jsx";
 import AddressAutocomplete from "../components/AddressAutocomplete.jsx";
 
 const SenderPage = () => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -59,7 +61,7 @@ const SenderPage = () => {
   const loadSenderData = async () => {
     try {
       setLoading(true);
-      const senderData = await senderService.get();
+      const senderData = await senderService.get(user?.uid);
       if (senderData) {
         setFormData({
           name: senderData.name || "",
@@ -230,7 +232,7 @@ const SenderPage = () => {
 
     try {
       setSaving(true);
-      await senderService.update(formData);
+      await senderService.update(user?.uid, formData);
       showSnackbar("Sender details saved successfully");
     } catch (error) {
       console.error("Error saving sender data:", error);
