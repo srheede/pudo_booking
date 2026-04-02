@@ -11,6 +11,7 @@ import {
   orderBy,
   serverTimestamp,
   where,
+  Timestamp,
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
@@ -169,5 +170,16 @@ export const bookingService = {
     );
     const snap = await getDocs(q);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  },
+
+  async getMonthlyCount(uid) {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const q = query(
+      getCollectionRef(uid, "bookings"),
+      where("createdAt", ">=", Timestamp.fromDate(startOfMonth))
+    );
+    const snap = await getDocs(q);
+    return snap.size;
   },
 };

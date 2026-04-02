@@ -38,7 +38,7 @@ const ipcRenderer = window.require
   : null;
 
 const CustomersPage = () => {
-  const { user } = useAuth();
+  const { user, tierLimits, subscriptionTier } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -113,7 +113,18 @@ const CustomersPage = () => {
     setSnackbar({ open: true, message, severity });
   };
 
+  const atCustomerLimit =
+    tierLimits?.maxCustomers !== null &&
+    customers.length >= (tierLimits?.maxCustomers ?? Infinity);
+
   const handleAddCustomer = () => {
+    if (atCustomerLimit) {
+      showSnackbar(
+        `Your ${subscriptionTier} plan allows up to ${tierLimits.maxCustomers} customers. Upgrade your plan to add more.`,
+        "warning"
+      );
+      return;
+    }
     setSelectedCustomer(null);
     setFormOpen(true);
   };
@@ -289,10 +300,19 @@ const CustomersPage = () => {
           variant="contained"
           startIcon={<Add />}
           onClick={handleAddCustomer}
+          disabled={atCustomerLimit}
         >
           Add Customer
         </Button>
       </Box>
+
+      {atCustomerLimit && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          You have reached the {tierLimits.maxCustomers}-customer limit for your{" "}
+          <strong style={{ textTransform: "capitalize" }}>{subscriptionTier}</strong> plan.
+          Upgrade your subscription to add more customers.
+        </Alert>
+      )}
 
       <TextField
         size="small"

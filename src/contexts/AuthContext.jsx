@@ -12,6 +12,16 @@ export const useAuth = () => {
   return context;
 };
 
+// Limits per tier. null means unlimited.
+export const TIER_LIMITS = {
+  starter:      { maxCustomers: 50,  maxMonthlyBookings: 100 },
+  professional: { maxCustomers: 200, maxMonthlyBookings: 500 },
+  business:     { maxCustomers: null, maxMonthlyBookings: null },
+};
+
+// Existing subscribers without a tier field default to professional.
+const DEFAULT_TIER = "professional";
+
 const isSubscriptionValid = (profileData) => {
   if (!profileData) return false;
   if (profileData.subscriptionStatus !== "active") return false;
@@ -35,6 +45,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [subscriptionValid, setSubscriptionValid] = useState(false);
+  const [subscriptionTier, setSubscriptionTier] = useState(DEFAULT_TIER);
   const [pudoApiKey, setPudoApiKey] = useState(null);
   const [userProfile, setUserProfile] = useState(undefined);
 
@@ -44,6 +55,8 @@ export const AuthProvider = ({ children }) => {
     setUserProfile(profile);
     const valid = isSubscriptionValid(profile);
     setSubscriptionValid(valid);
+    const tier = TIER_LIMITS[profile?.subscriptionTier] ? profile.subscriptionTier : DEFAULT_TIER;
+    setSubscriptionTier(tier);
     const key = profile?.pudoApiKey ?? null;
     setPudoApiKey(key);
     if (key) {
@@ -77,6 +90,7 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     await authService.signOut();
     setSubscriptionValid(false);
+    setSubscriptionTier(DEFAULT_TIER);
     setPudoApiKey(null);
   };
 
@@ -104,6 +118,8 @@ export const AuthProvider = ({ children }) => {
     signOut,
     loading,
     subscriptionValid,
+    subscriptionTier,
+    tierLimits: TIER_LIMITS[subscriptionTier] ?? TIER_LIMITS[DEFAULT_TIER],
     pudoApiKey,
     userProfile,
     updatePudoApiKey,

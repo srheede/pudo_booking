@@ -86,7 +86,7 @@ const toZoneCode = (province) => {
 };
 
 const BookingsPage = () => {
-  const { user } = useAuth();
+  const { user, tierLimits, subscriptionTier } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
@@ -95,6 +95,7 @@ const BookingsPage = () => {
   const [customerSizes, setCustomerSizes] = useState({});
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [monthlyBookingCount, setMonthlyBookingCount] = useState(0);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -116,12 +117,14 @@ const BookingsPage = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [customersData, senderData] = await Promise.all([
+      const [customersData, senderData, monthlyCount] = await Promise.all([
         customerService.getAll(user?.uid),
         senderService.get(user?.uid),
+        bookingService.getMonthlyCount(user?.uid),
       ]);
       setCustomers(customersData);
       setSender(senderData);
+      setMonthlyBookingCount(monthlyCount);
       await loadTerminalsData();
     } catch (error) {
       console.error("Error loading data:", error);
@@ -231,6 +234,13 @@ const BookingsPage = () => {
     }));
   };
 
+  const maxMonthlyBookings = tierLimits?.maxMonthlyBookings ?? null;
+  const remainingBookings = maxMonthlyBookings !== null
+    ? Math.max(0, maxMonthlyBookings - monthlyBookingCount)
+    : null;
+  const wouldExceedLimit = maxMonthlyBookings !== null &&
+    monthlyBookingCount + selectedCustomers.length > maxMonthlyBookings;
+
   const handleCreateBookings = () => {
     if (selectedCustomers.length === 0) {
       showSnackbar("Please select at least one customer", "warning");
@@ -239,6 +249,14 @@ const BookingsPage = () => {
 
     if (!sender) {
       showSnackbar("Please configure sender details first", "error");
+      return;
+    }
+
+    if (wouldExceedLimit) {
+      showSnackbar(
+        `This would exceed your monthly booking limit (${maxMonthlyBookings}/month on ${subscriptionTier} plan). You have ${remainingBookings} booking${remainingBookings === 1 ? "" : "s"} remaining this month.`,
+        "warning"
+      );
       return;
     }
 
@@ -380,6 +398,9 @@ const BookingsPage = () => {
       } else {
         showSnackbar("All bookings failed to create", "error");
       }
+
+      // Update monthly booking count
+      setMonthlyBookingCount((prev) => prev + successCount);
 
       // Clear selections
       setSelectedCustomers([]);
@@ -562,6 +583,17 @@ const BookingsPage = () => {
       {!sender && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Please configure your sender details before creating bookings.
+        </Alert>
+      )}
+
+      {maxMonthlyBookings !== null && (
+        <Alert
+          severity={monthlyBookingCount >= maxMonthlyBookings ? "error" : "info"}
+          sx={{ mb: 2 }}
+        >
+          {monthlyBookingCount >= maxMonthlyBookings
+            ? `You have used all ${maxMonthlyBookings} bookings for this month on your ${subscriptionTier} plan. Upgrade your plan to continue booking.`
+            : `Monthly bookings: ${monthlyBookingCount} / ${maxMonthlyBookings} used (${remainingBookings} remaining).`}
         </Alert>
       )}
 
