@@ -56,7 +56,12 @@
     ],
     "mac": {
       "category": "public.app-category.business",
-      "target": "dmg"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        }
+      ]
     },
     "win": {
       "target": "nsis"
