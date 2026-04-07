@@ -8,6 +8,7 @@
     "dev": "concurrently \"npm run dev-react\" \"wait-on http://localhost:3000 && ELECTRON_DEV=1 electron .\"",
     "dev-react": "vite",
     "build": "vite build",
+    "generate-icons": "node scripts/generate-icons.js",
     "build-electron": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
     "pack": "npm run build && electron-builder --dir"
@@ -25,6 +26,7 @@
     "concurrently": "^8.2.2",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
+    "sharp": "^0.34.5",
     "vite": "^5.0.8",
     "wait-on": "^7.2.0"
   },
@@ -42,31 +44,37 @@
     "react-dom": "^18.2.0"
   },
   "build": {
-    "appId": "com.yourcompany.pudo-booking",
+    "appId": "com.pudoapp.booking",
     "productName": "Pudo Booking App",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },
     "files": [
       "build/**/*",
       "src/main.js",
-      "src/config.js",
       "config.json",
+      "assets/icon.png",
       "node_modules/**/*"
     ],
     "mac": {
       "category": "public.app-category.business",
+      "icon": "assets/icon.png",
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ]
     },
     "win": {
+      "icon": "assets/icon-256.png",
       "target": "nsis"
     },
     "linux": {
+      "icon": "assets/icon.png",
       "target": "AppImage"
     }
   }

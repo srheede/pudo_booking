@@ -73,6 +73,9 @@ jobs:
           }
           EOF
 
+      - name: Generate app icons
+        run: node scripts/generate-icons.js
+
       - name: Build Vite (React frontend)
         run: npm run build
 
