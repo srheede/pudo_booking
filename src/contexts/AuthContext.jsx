@@ -14,9 +14,9 @@ export const useAuth = () => {
 
 // Limits per tier. null means unlimited.
 export const TIER_LIMITS = {
-  starter:      { maxCustomers: 50,  maxMonthlyBookings: 100 },
+  starter:      { maxCustomers: 20,  maxMonthlyBookings: 50 },
   professional: { maxCustomers: 200, maxMonthlyBookings: 500 },
-  business:     { maxCustomers: null, maxMonthlyBookings: null },
+  enterprise:   { maxCustomers: null, maxMonthlyBookings: null },
 };
 
 // Existing subscribers without a tier field default to professional.
