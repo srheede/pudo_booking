@@ -32,10 +32,10 @@ const isSubscriptionValid = (profileData) => {
   return endDate > new Date();
 };
 
-const notifyMainProcessApiKey = (apiKey) => {
+const notifyMainProcessApiKey = async (apiKey) => {
   try {
     const { ipcRenderer } = window.require("electron");
-    ipcRenderer.invoke("set-pudo-api-key", apiKey);
+    await ipcRenderer.invoke("set-pudo-api-key", apiKey);
   } catch {
     // Not in Electron context (dev/browser preview) — silently ignore.
   }
@@ -58,10 +58,13 @@ export const AuthProvider = ({ children }) => {
     const tier = TIER_LIMITS[profile?.subscriptionTier] ? profile.subscriptionTier : DEFAULT_TIER;
     setSubscriptionTier(tier);
     const key = profile?.pudoApiKey ?? null;
-    setPudoApiKey(key);
     if (key) {
-      notifyMainProcessApiKey(key);
+      // Notify the main process BEFORE updating React state so that when
+      // child components mount and call get-all-terminals, the key is already
+      // available in the main process.
+      await notifyMainProcessApiKey(key);
     }
+    setPudoApiKey(key);
   }, []);
 
   useEffect(() => {
