@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, globalShortcut } = require("electron");
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
@@ -61,6 +61,15 @@ function createWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+  });
+
+  // Allow DevTools to be opened in production via Cmd+Shift+I (Mac) / Ctrl+Shift+I (Win)
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const isDevToolsShortcut =
+      (input.meta || input.control) && input.shift && input.key.toLowerCase() === "i";
+    if (isDevToolsShortcut) {
+      mainWindow.webContents.toggleDevTools();
+    }
   });
 }
 

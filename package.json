@@ -54,8 +54,7 @@
       "build/**/*",
       "src/main.js",
       "config.json",
-      "assets/icon.png",
-      "node_modules/**/*"
+      "assets/icon.png"
     ],
     "mac": {
       "category": "public.app-category.business",

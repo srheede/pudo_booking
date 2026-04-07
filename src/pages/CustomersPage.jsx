@@ -18,13 +18,6 @@ import {
 import { DataGrid } from "@mui/x-data-grid";
 import { Add, Edit, Delete, Search } from "@mui/icons-material";
 import config from "../../config.json";
-
-// Helper function to get Authorization header
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
 import { customerService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
 import CustomerForm from "../components/CustomerForm.jsx";
@@ -32,6 +25,13 @@ import LockerAutocomplete, {
   clearLockersCache,
   isCacheValid,
 } from "../components/LockerAutocomplete.jsx";
+
+// Helper function to get Authorization header
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${config.PUDO_API_KEY}`,
+  "Content-Type": "application/json",
+  Accept: "application/json",
+});
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
