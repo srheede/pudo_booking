@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, CircularProgress } from "@mui/material";
 import config from "../../config.json";
+import { useAuth } from "../contexts/AuthContext";
 
 // Helper function to get Authorization header
 const getAuthHeaders = () => ({
@@ -39,11 +40,15 @@ const LockerAutocomplete = ({
   helperText,
   forceRefresh = false,
 }) => {
+  const { pudoApiKey, publicMode } = useAuth();
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
   useEffect(() => {
+    // In PUBLIC_MODE, wait until the API key has been loaded from the user profile.
+    if (publicMode && !pudoApiKey) return;
+
     const loadTerminals = async () => {
       // Check if we have valid cached data (unless force refresh is requested)
       if (!forceRefresh && isCacheValid()) {
@@ -57,9 +62,14 @@ const LockerAutocomplete = ({
 
         if (!ipcRenderer) {
           // Browser mode: make direct API call
+          const apiKey = publicMode ? pudoApiKey : config.PUDO_API_KEY;
           const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
             method: "GET",
-            headers: getAuthHeaders(),
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
           });
 
           if (!response.ok) {
@@ -104,9 +114,9 @@ const LockerAutocomplete = ({
       }
     };
 
-    // Load all terminals on component mount or when forceRefresh changes
+    // Load all terminals on component mount or when forceRefresh/pudoApiKey changes
     loadTerminals();
-  }, [forceRefresh]); // Re-run when forceRefresh changes
+  }, [forceRefresh, pudoApiKey]); // Re-run when forceRefresh or pudoApiKey changes
 
   // Filter options based on input value
   const filteredOptions = options.filter((option) => {

@@ -86,7 +86,7 @@ const toZoneCode = (province) => {
 };
 
 const BookingsPage = () => {
-  const { user, tierLimits, subscriptionTier } = useAuth();
+  const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
@@ -111,8 +111,10 @@ const BookingsPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
+    // In PUBLIC_MODE, wait until the API key has been loaded from the user profile.
+    if (publicMode && !pudoApiKey) return;
     loadData();
-  }, []);
+  }, [pudoApiKey]);
 
   const loadData = async () => {
     try {

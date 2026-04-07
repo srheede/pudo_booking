@@ -38,7 +38,7 @@ const ipcRenderer = window.require
   : null;
 
 const CustomersPage = () => {
-  const { user, tierLimits, subscriptionTier } = useAuth();
+  const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -55,8 +55,10 @@ const CustomersPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
+    // In PUBLIC_MODE, wait until the API key has been loaded from the user profile.
+    if (publicMode && !pudoApiKey) return;
     loadCustomers();
-  }, []);
+  }, [pudoApiKey]);
 
   const loadCustomers = async () => {
     try {

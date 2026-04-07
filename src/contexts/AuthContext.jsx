@@ -128,7 +128,9 @@ export const AuthProvider = ({ children }) => {
     loading,
     subscriptionValid,
     subscriptionTier,
-    tierLimits: TIER_LIMITS[subscriptionTier] ?? TIER_LIMITS[DEFAULT_TIER],
+    tierLimits: config.PUBLIC_MODE
+      ? (TIER_LIMITS[subscriptionTier] ?? TIER_LIMITS[DEFAULT_TIER])
+      : { maxCustomers: null, maxMonthlyBookings: null },
     pudoApiKey,
     userProfile,
     updatePudoApiKey,

@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, CircularProgress } from "@mui/material";
 import config from "../../config.json";
-
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
+import { useAuth } from "../contexts/AuthContext";
 
 const ipcRenderer = window.require
   ? window.require("electron").ipcRenderer
@@ -36,11 +31,15 @@ const KioskAutocomplete = ({
   helperText,
   forceRefresh = false,
 }) => {
+  const { pudoApiKey, publicMode } = useAuth();
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
   useEffect(() => {
+    // In PUBLIC_MODE, wait until the API key has been loaded from the user profile.
+    if (publicMode && !pudoApiKey) return;
+
     const loadKiosks = async () => {
       if (!forceRefresh && isKioskCacheValid()) {
         setOptions(kiosksCache);
@@ -52,9 +51,14 @@ const KioskAutocomplete = ({
         let terminals;
 
         if (!ipcRenderer) {
+          const apiKey = publicMode ? pudoApiKey : config.PUDO_API_KEY;
           const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
             method: "GET",
-            headers: getAuthHeaders(),
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
           });
 
           if (!response.ok) {
@@ -100,7 +104,7 @@ const KioskAutocomplete = ({
     };
 
     loadKiosks();
-  }, [forceRefresh]);
+  }, [forceRefresh, pudoApiKey]);
 
   const filteredOptions = options.filter((option) => {
     if (inputValue.length === 0) return true;
