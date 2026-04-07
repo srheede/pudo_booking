@@ -65,7 +65,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    // Safety net: if Firebase never fires (e.g. offline or blocked), stop
+    // showing the loading screen after 8 seconds so the login page appears.
+    const timeout = setTimeout(() => setLoading(false), 8000);
+
     const unsubscribe = authService.onAuthStateChanged(async (firebaseUser) => {
+      clearTimeout(timeout);
       setUser(firebaseUser);
       if (firebaseUser) {
         await loadUserProfile(firebaseUser);
@@ -76,7 +81,11 @@ export const AuthProvider = ({ children }) => {
       }
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      clearTimeout(timeout);
+      unsubscribe();
+    };
   }, [loadUserProfile]);
 
   const signUp = async (email, password) => {

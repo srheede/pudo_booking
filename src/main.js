@@ -37,6 +37,9 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: true,
+      // Needed so Firebase can reach *.googleapis.com from the file:// protocol
+      // (macOS Chromium blocks cross-origin requests from file:// by default).
+      webSecurity: false,
     },
     icon: path.join(__dirname, "../assets/icon.png"),
   });
