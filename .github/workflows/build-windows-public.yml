@@ -7,17 +7,17 @@ name: Build Windows Executable (Public / Subscription)
 # Triggers automatically on push to the `public` branch, or manually.
 #
 # Required GitHub secrets:
-#   PUB_API_BASE_URL                  — https://api-pudo.co.za/api/v1
-#   PUB_GOOGLE_MAPS_API_KEY           — Google Maps API key (can share with internal)
-#   PUB_FIREBASE_API_KEY              — Firebase API key for pudo-booking-pub
-#   PUB_FIREBASE_AUTH_DOMAIN          — pudo-booking-pub.firebaseapp.com
-#   PUB_FIREBASE_PROJECT_ID           — pudo-booking-pub
-#   PUB_FIREBASE_STORAGE_BUCKET       — pudo-booking-pub.firebasestorage.app
-#   PUB_FIREBASE_MESSAGING_SENDER_ID  — 418497457347
-#   PUB_FIREBASE_APP_ID               — 1:418497457347:web:f2e7ccf9fa94b603420676
-#   PUB_FIREBASE_MEASUREMENT_ID       — G-WPJJD30M12
-#   FIREBASE_SERVICE_ACCOUNT_JSON     — GCP service account JSON with Storage Object Admin
-#                                       role on pudo-booking-pub.firebasestorage.app
+#   API_BASE_URL                  — https://api-pudo.co.za/api/v1
+#   GOOGLE_MAPS_API_KEY           — Google Maps API key (can share with internal)
+#   FIREBASE_API_KEY              — Firebase API key for pudo-booking-pub
+#   FIREBASE_AUTH_DOMAIN          — pudo-booking-pub.firebaseapp.com
+#   FIREBASE_PROJECT_ID           — pudo-booking-pub
+#   FIREBASE_STORAGE_BUCKET       — pudo-booking-pub.firebasestorage.app
+#   FIREBASE_MESSAGING_SENDER_ID  — 418497457347
+#   FIREBASE_APP_ID               — 1:418497457347:web:f2e7ccf9fa94b603420676
+#   FIREBASE_MEASUREMENT_ID       — G-WPJJD30M12
+#   FIREBASE_SERVICE_ACCOUNT_JSON — GCP service account JSON with Storage Object Admin
+#                                   role on pudo-booking-pub.firebasestorage.app
 
 on:
   push:
@@ -53,10 +53,10 @@ jobs:
         shell: bash
         run: |
           missing=""
-          [ -z "${{ secrets.PUB_FIREBASE_API_KEY }}" ]      && missing="$missing PUB_FIREBASE_API_KEY"
-          [ -z "${{ secrets.PUB_FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing PUB_FIREBASE_AUTH_DOMAIN"
-          [ -z "${{ secrets.PUB_FIREBASE_PROJECT_ID }}" ]   && missing="$missing PUB_FIREBASE_PROJECT_ID"
-          [ -z "${{ secrets.PUB_API_BASE_URL }}" ]          && missing="$missing PUB_API_BASE_URL"
+          [ -z "${{ secrets.FIREBASE_API_KEY }}" ]      && missing="$missing FIREBASE_API_KEY"
+          [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
+          [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
+          [ -z "${{ secrets.API_BASE_URL }}" ]           && missing="$missing API_BASE_URL"
           if [ -n "$missing" ]; then
             echo "::error::Missing GitHub Secrets:$missing"
             echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
@@ -71,16 +71,16 @@ jobs:
           {
             "PUBLIC_MODE": true,
             "PUDO_API_KEY": "",
-            "API_BASE_URL": "${{ secrets.PUB_API_BASE_URL }}",
-            "GOOGLE_MAPS_API_KEY": "${{ secrets.PUB_GOOGLE_MAPS_API_KEY }}",
+            "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
+            "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
             "FIREBASE": {
-              "apiKey": "${{ secrets.PUB_FIREBASE_API_KEY }}",
-              "authDomain": "${{ secrets.PUB_FIREBASE_AUTH_DOMAIN }}",
-              "projectId": "${{ secrets.PUB_FIREBASE_PROJECT_ID }}",
-              "storageBucket": "${{ secrets.PUB_FIREBASE_STORAGE_BUCKET }}",
-              "messagingSenderId": "${{ secrets.PUB_FIREBASE_MESSAGING_SENDER_ID }}",
-              "appId": "${{ secrets.PUB_FIREBASE_APP_ID }}",
-              "measurementId": "${{ secrets.PUB_FIREBASE_MEASUREMENT_ID }}"
+              "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
+              "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
+              "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
+              "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET }}",
+              "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+              "appId": "${{ secrets.FIREBASE_APP_ID }}",
+              "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
             }
           }
           EOF
