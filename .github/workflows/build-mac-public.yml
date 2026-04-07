@@ -7,6 +7,7 @@ name: Build macOS Executable (Public / Subscription)
 # Triggers automatically on push to the `public` branch, or manually.
 #
 # Required GitHub secrets (same as the Windows public build):
+#   PUBLIC_MODE                   — true
 #   API_BASE_URL                  — https://api-pudo.co.za/api/v1
 #   GOOGLE_MAPS_API_KEY           — Google Maps API key
 #   FIREBASE_API_KEY              — Firebase API key for pudo-booking-pub
@@ -56,6 +57,7 @@ jobs:
         shell: bash
         run: |
           missing=""
+          [ -z "${{ secrets.PUBLIC_MODE }}" ]           && missing="$missing PUBLIC_MODE"
           [ -z "${{ secrets.FIREBASE_API_KEY }}" ]      && missing="$missing FIREBASE_API_KEY"
           [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
           [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
@@ -72,7 +74,7 @@ jobs:
         run: |
           cat > config.json << 'EOF'
           {
-            "PUBLIC_MODE": true,
+            "PUBLIC_MODE": ${{ secrets.PUBLIC_MODE }},
             "PUDO_API_KEY": "",
             "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
             "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
