@@ -121,14 +121,13 @@ jobs:
           if (-not $exe) { Write-Error "No .exe found in dist/"; exit 1 }
           Copy-Item $exe.FullName "dist\PudoBookingApp-Setup.exe"
 
-      - name: Authenticate to Google Cloud (public mode only)
-        if: env.PUBLIC_MODE == 'true'
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Upload installer to Firebase Storage (public mode only)
-        if: env.PUBLIC_MODE == 'true'
+      - name: Upload installer to Firebase Storage
+        if: true
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp-Setup.exe
