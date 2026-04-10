@@ -64,6 +64,9 @@ jobs:
           [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
           [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
           [ -z "${{ secrets.API_BASE_URL }}" ]          && missing="$missing API_BASE_URL"
+          if [ "${{ secrets.PUBLIC_MODE }}" != "true" ] && [ -z "${{ secrets.PUDO_API_KEY }}" ]; then
+            missing="$missing PUDO_API_KEY"
+          fi
           if [ -n "$missing" ]; then
             echo "::error::Missing GitHub Secrets:$missing"
             echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
