@@ -71,28 +71,28 @@ jobs:
       - name: Create config.json from secrets
         shell: bash
         run: |
-          if [ "${{ secrets.PUBLIC_MODE }}" = "true" ]; then
-            PUDO_API_KEY_VALUE=""
-          else
-            PUDO_API_KEY_VALUE="${{ secrets.PUDO_API_KEY }}"
-          fi
-          cat > config.json << EOF
-          {
-            "PUBLIC_MODE": ${{ secrets.PUBLIC_MODE }},
-            "PUDO_API_KEY": "$PUDO_API_KEY_VALUE",
-            "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
-            "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
-            "FIREBASE": {
-              "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
-              "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
-              "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
-              "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET }}",
-              "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
-              "appId": "${{ secrets.FIREBASE_APP_ID }}",
-              "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
-            }
-          }
-          EOF
+          python3 - << 'PYEOF'
+import json
+is_public = "${{ secrets.PUBLIC_MODE }}" == "true"
+config = {
+  "PUBLIC_MODE": is_public,
+  "PUDO_API_KEY": "" if is_public else "${{ secrets.PUDO_API_KEY }}",
+  "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
+  "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
+  "FIREBASE": {
+    "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
+    "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
+    "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
+    "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET }}",
+    "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+    "appId": "${{ secrets.FIREBASE_APP_ID }}",
+    "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
+  }
+}
+with open("config.json", "w") as f:
+  json.dump(config, f, indent=2)
+print("config.json written, PUBLIC_MODE:", config["PUBLIC_MODE"], "key present:", bool(config["PUDO_API_KEY"]))
+PYEOF
 
       - name: Build Vite (React frontend)
         run: npm run build
