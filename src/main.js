@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, globalShortcut } = require("electron
 const path = require("path");
 const axios = require("axios");
 const fs = require("fs");
-const config = require("../config.json");
+const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../config.json"), "utf8"));
 const { PDFDocument } = require("pdf-lib");
 
 const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
