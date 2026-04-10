@@ -69,30 +69,41 @@ jobs:
           echo "All required secrets are present."
 
       - name: Create config.json from secrets
+        env:
+          CFG_PUBLIC_MODE: ${{ secrets.PUBLIC_MODE }}
+          CFG_PUDO_API_KEY: ${{ secrets.PUDO_API_KEY }}
+          CFG_API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          CFG_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          CFG_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          CFG_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          CFG_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          CFG_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          CFG_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          CFG_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          CFG_FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
         shell: bash
         run: |
-          python3 - << 'PYEOF'
-import json
-is_public = "${{ secrets.PUBLIC_MODE }}" == "true"
-config = {
-  "PUBLIC_MODE": is_public,
-  "PUDO_API_KEY": "" if is_public else "${{ secrets.PUDO_API_KEY }}",
-  "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
-  "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
-  "FIREBASE": {
-    "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
-    "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
-    "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
-    "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET }}",
-    "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
-    "appId": "${{ secrets.FIREBASE_APP_ID }}",
-    "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
-  }
-}
-with open("config.json", "w") as f:
-  json.dump(config, f, indent=2)
-print("config.json written, PUBLIC_MODE:", config["PUBLIC_MODE"], "key present:", bool(config["PUDO_API_KEY"]))
-PYEOF
+          node -e "
+            const e = process.env;
+            const isPublic = e.CFG_PUBLIC_MODE === 'true';
+            const config = {
+              PUBLIC_MODE: isPublic,
+              PUDO_API_KEY: isPublic ? '' : e.CFG_PUDO_API_KEY,
+              API_BASE_URL: e.CFG_API_BASE_URL,
+              GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
+              FIREBASE: {
+                apiKey: e.CFG_FIREBASE_API_KEY,
+                authDomain: e.CFG_FIREBASE_AUTH_DOMAIN,
+                projectId: e.CFG_FIREBASE_PROJECT_ID,
+                storageBucket: e.CFG_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
+                appId: e.CFG_FIREBASE_APP_ID,
+                measurementId: e.CFG_FIREBASE_MEASUREMENT_ID
+              }
+            };
+            require('fs').writeFileSync('config.json', JSON.stringify(config, null, 2));
+            console.log('config.json written, PUBLIC_MODE:', config.PUBLIC_MODE, 'key present:', !!config.PUDO_API_KEY);
+          "
 
       - name: Build Vite (React frontend)
         run: npm run build
