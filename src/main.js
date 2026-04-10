@@ -108,6 +108,7 @@ app.on("activate", () => {
 
 ipcMain.handle("set-pudo-api-key", (_, apiKey) => {
   runtimePudoApiKey = apiKey ?? null;
+  console.log("[main] set-pudo-api-key received, key present:", !!runtimePudoApiKey);
 });
 
 ipcMain.handle("get-public-mode", () => {
@@ -153,6 +154,7 @@ ipcMain.handle("create-shipment", async (event, payload) => {
 });
 
 ipcMain.handle("get-all-terminals", async () => {
+  console.log("[main] get-all-terminals called, PUBLIC_MODE:", config.PUBLIC_MODE, "key present:", !!getPudoApiKey());
   try {
     const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
       headers: getAuthHeaders(),

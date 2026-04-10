@@ -112,8 +112,8 @@ export const AuthProvider = ({ children }) => {
    */
   const updatePudoApiKey = useCallback(async (uid, apiKey) => {
     await userProfileService.savePudoApiKey(uid, apiKey);
+    await notifyMainProcessApiKey(apiKey);
     setPudoApiKey(apiKey);
-    notifyMainProcessApiKey(apiKey);
   }, []);
 
   /**
