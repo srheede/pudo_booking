@@ -1,6 +1,30 @@
 name: Build Windows Executable
 
+# Builds the Windows app. Behaviour is controlled by GitHub Secrets:
+#
+#   PUBLIC_MODE = false  →  Internal build. PUDO_API_KEY is baked in from secrets.
+#   PUBLIC_MODE = true   →  Public/subscription build. PUDO_API_KEY is empty;
+#                           users supply their own key via Firebase profile.
+#                           The installer is also uploaded to Firebase Storage.
+#
+# Required GitHub secrets:
+#   PUBLIC_MODE                   — true or false
+#   PUDO_API_KEY                  — Pudo API key (used when PUBLIC_MODE=false)
+#   API_BASE_URL                  — https://api-pudo.co.za/api/v1
+#   GOOGLE_MAPS_API_KEY           — Google Maps API key
+#   FIREBASE_API_KEY              — Firebase API key
+#   FIREBASE_AUTH_DOMAIN          — Firebase auth domain
+#   FIREBASE_PROJECT_ID           — Firebase project ID
+#   FIREBASE_STORAGE_BUCKET       — Firebase storage bucket
+#   FIREBASE_MESSAGING_SENDER_ID  — Firebase messaging sender ID
+#   FIREBASE_APP_ID               — Firebase app ID
+#   FIREBASE_MEASUREMENT_ID       — Firebase measurement ID
+#   FIREBASE_SERVICE_ACCOUNT_JSON — GCP service account JSON (required when PUBLIC_MODE=true)
+
 on:
+  push:
+    branches:
+      - public
   workflow_dispatch:
     inputs:
       version_note:
@@ -11,6 +35,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
@@ -25,21 +51,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          missing=""
+          [ -z "${{ secrets.PUBLIC_MODE }}" ]           && missing="$missing PUBLIC_MODE"
+          [ -z "${{ secrets.FIREBASE_API_KEY }}" ]      && missing="$missing FIREBASE_API_KEY"
+          [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
+          [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
+          [ -z "${{ secrets.API_BASE_URL }}" ]          && missing="$missing API_BASE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub Secrets:$missing"
+            echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
+            exit 1
+          fi
+          echo "All required secrets are present."
+
       - name: Create config.json from secrets
         shell: bash
         run: |
-          cat > config.json << 'EOF'
+          if [ "${{ secrets.PUBLIC_MODE }}" = "true" ]; then
+            PUDO_API_KEY_VALUE=""
+          else
+            PUDO_API_KEY_VALUE="${{ secrets.PUDO_API_KEY }}"
+          fi
+          cat > config.json << EOF
           {
-            "PUBLIC_MODE": false,
-            "PUDO_API_KEY": "${{ secrets.PUDO_API_KEY }}",
+            "PUBLIC_MODE": ${{ secrets.PUBLIC_MODE }},
+            "PUDO_API_KEY": "$PUDO_API_KEY_VALUE",
             "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
             "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
             "FIREBASE": {
               "apiKey": "${{ secrets.FIREBASE_API_KEY }}",
               "authDomain": "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
               "projectId": "${{ secrets.FIREBASE_PROJECT_ID }}",
+              "storageBucket": "${{ secrets.FIREBASE_STORAGE_BUCKET }}",
               "messagingSenderId": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
-              "appId": "${{ secrets.FIREBASE_APP_ID }}"
+              "appId": "${{ secrets.FIREBASE_APP_ID }}",
+              "measurementId": "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
             }
           }
           EOF
@@ -50,21 +99,39 @@ jobs:
       - name: Build Windows executable
         run: npx electron-builder --win --publish=never
 
+      - name: Copy installer to stable filename
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "No .exe found in dist/"; exit 1 }
+          Copy-Item $exe.FullName "dist\PudoBookingApp-Setup.exe"
+
+      - name: Authenticate to Google Cloud (public mode only)
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Upload installer to Firebase Storage (public mode only)
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: dist/PudoBookingApp-Setup.exe
+          destination: pudo-booking-pub.firebasestorage.app/downloads/windows
+          gzip: false
+          headers: |-
+            cache-control: no-cache, no-store, must-revalidate
+
       - name: Zip the installer
         shell: pwsh
         run: |
-          $exeFile = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1
-          if (-not $exeFile) {
-            Write-Error "No .exe file found in dist/"
-            exit 1
-          }
           $zipName = "PudoBookingApp-Windows-${{ github.run_number }}.zip"
-          Compress-Archive -Path $exeFile.FullName -DestinationPath "dist\$zipName"
-          Write-Output "Created $zipName from $($exeFile.Name)"
+          Compress-Archive -Path "dist\PudoBookingApp-Setup.exe" -DestinationPath "dist\$zipName"
+          Write-Output "Created $zipName"
 
-      - name: Upload Windows build artifact
+      - name: Upload GitHub artifact
         uses: actions/upload-artifact@v4
         with:
           name: PudoBookingApp-Windows-${{ github.run_number }}
           path: dist/*.zip
-          retention-days: 30
+          retention-days: 90

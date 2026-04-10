@@ -1,24 +1,25 @@
-name: Build macOS Executable (Public / Subscription)
+name: Build macOS Executable
 
-# Builds the public-mode version of the app for macOS that connects to the
-# pudo-booking-pub Firebase project. Users log in with accounts created
-# on the subscription homepage and must have an active subscription.
+# Builds the macOS app. Behaviour is controlled by GitHub Secrets:
 #
-# Triggers automatically on push to the `public` branch, or manually.
+#   PUBLIC_MODE = false  →  Internal build. PUDO_API_KEY is baked in from secrets.
+#   PUBLIC_MODE = true   →  Public/subscription build. PUDO_API_KEY is empty;
+#                           users supply their own key via Firebase profile.
+#                           The DMG is also uploaded to Firebase Storage.
 #
-# Required GitHub secrets (same as the Windows public build):
-#   PUBLIC_MODE                   — true
+# Required GitHub secrets:
+#   PUBLIC_MODE                   — true or false
+#   PUDO_API_KEY                  — Pudo API key (used when PUBLIC_MODE=false)
 #   API_BASE_URL                  — https://api-pudo.co.za/api/v1
 #   GOOGLE_MAPS_API_KEY           — Google Maps API key
-#   FIREBASE_API_KEY              — Firebase API key for pudo-booking-pub
-#   FIREBASE_AUTH_DOMAIN          — pudo-booking-pub.firebaseapp.com
-#   FIREBASE_PROJECT_ID           — pudo-booking-pub
-#   FIREBASE_STORAGE_BUCKET       — pudo-booking-pub.firebasestorage.app
-#   FIREBASE_MESSAGING_SENDER_ID  — 418497457347
-#   FIREBASE_APP_ID               — 1:418497457347:web:f2e7ccf9fa94b603420676
-#   FIREBASE_MEASUREMENT_ID       — G-WPJJD30M12
-#   FIREBASE_SERVICE_ACCOUNT_JSON — GCP service account JSON with Storage Object Admin
-#                                   role on pudo-booking-pub.firebasestorage.app
+#   FIREBASE_API_KEY              — Firebase API key
+#   FIREBASE_AUTH_DOMAIN          — Firebase auth domain
+#   FIREBASE_PROJECT_ID           — Firebase project ID
+#   FIREBASE_STORAGE_BUCKET       — Firebase storage bucket
+#   FIREBASE_MESSAGING_SENDER_ID  — Firebase messaging sender ID
+#   FIREBASE_APP_ID               — Firebase app ID
+#   FIREBASE_MEASUREMENT_ID       — Firebase measurement ID
+#   FIREBASE_SERVICE_ACCOUNT_JSON — GCP service account JSON (required when PUBLIC_MODE=true)
 #
 # Note: The resulting DMG is unsigned. macOS users will need to allow the app
 # via System Settings → Privacy & Security → "Open Anyway" on first launch.
@@ -30,12 +31,12 @@ on:
   workflow_dispatch:
     inputs:
       version_note:
-        description: "Optional note for this build (e.g. v1.0 public release)"
+        description: "Optional note for this build (e.g. v1.0 release)"
         required: false
         default: ""
 
 jobs:
-  build-mac-public:
+  build-mac:
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -61,7 +62,7 @@ jobs:
           [ -z "${{ secrets.FIREBASE_API_KEY }}" ]      && missing="$missing FIREBASE_API_KEY"
           [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
           [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
-          [ -z "${{ secrets.API_BASE_URL }}" ]           && missing="$missing API_BASE_URL"
+          [ -z "${{ secrets.API_BASE_URL }}" ]          && missing="$missing API_BASE_URL"
           if [ -n "$missing" ]; then
             echo "::error::Missing GitHub Secrets:$missing"
             echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
@@ -69,13 +70,18 @@ jobs:
           fi
           echo "All required secrets are present."
 
-      - name: Create config.json for public mode
+      - name: Create config.json from secrets
         shell: bash
         run: |
-          cat > config.json << 'EOF'
+          if [ "${{ secrets.PUBLIC_MODE }}" = "true" ]; then
+            PUDO_API_KEY_VALUE=""
+          else
+            PUDO_API_KEY_VALUE="${{ secrets.PUDO_API_KEY }}"
+          fi
+          cat > config.json << EOF
           {
             "PUBLIC_MODE": ${{ secrets.PUBLIC_MODE }},
-            "PUDO_API_KEY": "",
+            "PUDO_API_KEY": "$PUDO_API_KEY_VALUE",
             "API_BASE_URL": "${{ secrets.API_BASE_URL }}",
             "GOOGLE_MAPS_API_KEY": "${{ secrets.GOOGLE_MAPS_API_KEY }}",
             "FIREBASE": {
@@ -99,24 +105,21 @@ jobs:
       - name: Build macOS DMG
         run: npx electron-builder --mac --publish=never
 
-      - name: Locate DMG
-        id: locate
+      - name: Copy DMG to stable filename
         shell: bash
         run: |
           dmg=$(find dist -name "*.dmg" | head -n 1)
           if [ -z "$dmg" ]; then echo "No .dmg found in dist/" && exit 1; fi
-          echo "dmg_path=$dmg" >> "$GITHUB_OUTPUT"
+          cp "$dmg" dist/PudoBookingApp.dmg
 
-      - name: Copy DMG to stable filename
-        shell: bash
-        run: cp "${{ steps.locate.outputs.dmg_path }}" dist/PudoBookingApp.dmg
-
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud (public mode only)
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Upload DMG to Firebase Storage (stable URL)
+      - name: Upload DMG to Firebase Storage (public mode only)
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp.dmg
@@ -125,7 +128,7 @@ jobs:
           headers: |-
             cache-control: no-cache, no-store, must-revalidate
 
-      - name: Zip the DMG (GitHub artifact archive)
+      - name: Zip the DMG
         shell: bash
         run: |
           zip_name="PudoBookingApp-Mac-${{ github.run_number }}.zip"
