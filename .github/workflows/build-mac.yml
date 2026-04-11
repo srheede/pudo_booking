@@ -1,29 +1,66 @@
 name: Build macOS Executable
 
-# Builds the macOS app. Behaviour is controlled by GitHub Secrets:
+# ──────────────────────────────────────────────────────────────────────────────
+# TWO BUILD MODES — controlled by the PUBLIC_MODE secret:
 #
-#   PUBLIC_MODE = false  →  Internal build. PUDO_API_KEY is baked in from secrets.
-#   PUBLIC_MODE = true   →  Public/subscription build. PUDO_API_KEY is empty;
-#                           users supply their own key via Firebase profile.
-#                           The DMG is also uploaded to Firebase Storage.
+#  PUBLIC_MODE = false  →  INTERNAL build
+#    • Single-user / developer build.
+#    • The PUDO API key is baked into the app from the PUDO_API_KEY secret.
+#    • No subscription or Firebase Auth checks at runtime.
+#    • Uses the INTERNAL Firebase project (set via FIREBASE_* secrets).
+#    • The DMG is uploaded as a GitHub Actions artifact only.
 #
-# Required GitHub secrets:
-#   PUBLIC_MODE                   — true or false
-#   PUDO_API_KEY                  — Pudo API key (used when PUBLIC_MODE=false)
-#   API_BASE_URL                  — https://api-pudo.co.za/api/v1
-#   GOOGLE_MAPS_API_KEY           — Google Maps API key
-#   FIREBASE_API_KEY              — Firebase API key
-#   FIREBASE_AUTH_DOMAIN          — Firebase auth domain
-#   FIREBASE_PROJECT_ID           — Firebase project ID
-#   FIREBASE_DATABASE_ID          — Firestore database ID (leave empty for "(default)")
-#   FIREBASE_STORAGE_BUCKET       — Firebase storage bucket
-#   FIREBASE_MESSAGING_SENDER_ID  — Firebase messaging sender ID
-#   FIREBASE_APP_ID               — Firebase app ID
-#   FIREBASE_MEASUREMENT_ID       — Firebase measurement ID
-#   FIREBASE_SERVICE_ACCOUNT_JSON — GCP service account JSON (required when PUBLIC_MODE=true)
+#  PUBLIC_MODE = true   →  PUBLIC / SUBSCRIPTION build
+#    • Multi-user build distributed to paying customers.
+#    • Users authenticate via Firebase Auth and supply their own PUDO API key
+#      through their Firebase profile (no key is baked in).
+#    • Subscription status is read from Firestore on every login.
+#    • Uses the PUBLIC Firebase project (set via PUBLIC_FIREBASE_* secrets),
+#      which may use a named Firestore database (PUBLIC_FIREBASE_DATABASE_ID).
+#    • The DMG is uploaded to Firebase Storage as well as a GitHub artifact.
 #
-# Note: The resulting DMG is unsigned. macOS users will need to allow the app
-# via System Settings → Privacy & Security → "Open Anyway" on first launch.
+# ──────────────────────────────────────────────────────────────────────────────
+# SECRETS REQUIRED FOR EVERY BUILD:
+#   PUBLIC_MODE                        — "true" or "false"
+#   API_BASE_URL                       — https://api-pudo.co.za/api/v1
+#   GOOGLE_MAPS_API_KEY                — Google Maps API key
+#
+# ADDITIONAL SECRET FOR PUBLIC BUILDS ONLY (installer upload to Firebase Storage):
+#   FIREBASE_SERVICE_ACCOUNT_JSON      — see "FIREBASE_SERVICE_ACCOUNT_JSON" note below
+#
+# SECRETS FOR INTERNAL MODE (PUBLIC_MODE=false):
+#   PUDO_API_KEY                       — Pudo API key baked into the app
+#   FIREBASE_API_KEY                   — Internal Firebase project API key
+#   FIREBASE_AUTH_DOMAIN               — e.g. pudo-booking.firebaseapp.com
+#   FIREBASE_PROJECT_ID                — e.g. pudo-booking
+#   FIREBASE_STORAGE_BUCKET            — e.g. pudo-booking.firebasestorage.app
+#   FIREBASE_MESSAGING_SENDER_ID       — Internal project sender ID
+#   FIREBASE_APP_ID                    — Internal project app ID
+#   FIREBASE_MEASUREMENT_ID            — Internal project measurement ID (optional)
+#
+# SECRETS FOR PUBLIC MODE (PUBLIC_MODE=true):
+#   PUBLIC_FIREBASE_API_KEY            — Public Firebase project API key
+#   PUBLIC_FIREBASE_AUTH_DOMAIN        — e.g. pudo-booking-pub.firebaseapp.com
+#   PUBLIC_FIREBASE_PROJECT_ID         — e.g. pudo-booking-pub
+#   PUBLIC_FIREBASE_DATABASE_ID        — Named Firestore database ID (e.g. pudo-booking-pub)
+#                                        Leave empty to use the "(default)" database.
+#   PUBLIC_FIREBASE_STORAGE_BUCKET     — e.g. pudo-booking-pub.firebasestorage.app
+#   PUBLIC_FIREBASE_MESSAGING_SENDER_ID — Public project sender ID
+#   PUBLIC_FIREBASE_APP_ID             — Public project app ID
+#   PUBLIC_FIREBASE_MEASUREMENT_ID     — Public project measurement ID (optional)
+#
+# FIREBASE_SERVICE_ACCOUNT_JSON (PUBLIC builds only)
+#   This is NOT the same as the Firebase web config (apiKey, appId, …).
+#   It is a Google Cloud service account key used only by GitHub Actions to
+#   upload the built DMG to Firebase Storage in the PUBLIC project.
+#   • Create it in Google Cloud Console → select project "pudo-booking-pub"
+#     (same GCP project as your public Firebase app).
+#   • IAM & Admin → Service Accounts → create or pick an account → Keys → Add key → JSON.
+#   • Grant the account a role that can write objects to your download bucket,
+#     e.g. "Storage Object Admin" on the bucket, or "Firebase Admin" for simplicity.
+#   • Paste the entire JSON file contents into the GitHub secret.
+#   Internal builds (PUBLIC_MODE=false) skip Storage upload and do not need this secret.
+# ──────────────────────────────────────────────────────────────────────────────
 
 on:
   push:
@@ -60,20 +97,33 @@ jobs:
         shell: bash
         run: |
           missing=""
-          [ -z "${{ secrets.PUBLIC_MODE }}" ]           && missing="$missing PUBLIC_MODE"
-          [ -z "${{ secrets.FIREBASE_API_KEY }}" ]      && missing="$missing FIREBASE_API_KEY"
-          [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]  && missing="$missing FIREBASE_AUTH_DOMAIN"
-          [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]   && missing="$missing FIREBASE_PROJECT_ID"
-          [ -z "${{ secrets.API_BASE_URL }}" ]          && missing="$missing API_BASE_URL"
-          if [ "${{ secrets.PUBLIC_MODE }}" != "true" ] && [ -z "${{ secrets.PUDO_API_KEY }}" ]; then
-            missing="$missing PUDO_API_KEY"
+          [ -z "${{ secrets.PUBLIC_MODE }}" ]    && missing="$missing PUBLIC_MODE"
+          [ -z "${{ secrets.API_BASE_URL }}" ]   && missing="$missing API_BASE_URL"
+
+          if [ "${{ secrets.PUBLIC_MODE }}" = "true" ]; then
+            # ── Public mode: require PUBLIC_FIREBASE_* + service account for Storage upload ─
+            [ -z "${{ secrets.PUBLIC_FIREBASE_API_KEY }}" ]             && missing="$missing PUBLIC_FIREBASE_API_KEY"
+            [ -z "${{ secrets.PUBLIC_FIREBASE_AUTH_DOMAIN }}" ]         && missing="$missing PUBLIC_FIREBASE_AUTH_DOMAIN"
+            [ -z "${{ secrets.PUBLIC_FIREBASE_PROJECT_ID }}" ]          && missing="$missing PUBLIC_FIREBASE_PROJECT_ID"
+            [ -z "${{ secrets.PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" ] && missing="$missing PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+            [ -z "${{ secrets.PUBLIC_FIREBASE_APP_ID }}" ]              && missing="$missing PUBLIC_FIREBASE_APP_ID"
+            [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" ]       && missing="$missing FIREBASE_SERVICE_ACCOUNT_JSON"
+          else
+            # ── Internal mode: require PUDO_API_KEY + FIREBASE_* credentials ─
+            [ -z "${{ secrets.PUDO_API_KEY }}" ]               && missing="$missing PUDO_API_KEY"
+            [ -z "${{ secrets.FIREBASE_API_KEY }}" ]           && missing="$missing FIREBASE_API_KEY"
+            [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]       && missing="$missing FIREBASE_AUTH_DOMAIN"
+            [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]        && missing="$missing FIREBASE_PROJECT_ID"
+            [ -z "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" ] && missing="$missing FIREBASE_MESSAGING_SENDER_ID"
+            [ -z "${{ secrets.FIREBASE_APP_ID }}" ]            && missing="$missing FIREBASE_APP_ID"
           fi
+
           if [ -n "$missing" ]; then
             echo "::error::Missing GitHub Secrets:$missing"
             echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
             exit 1
           fi
-          echo "All required secrets are present."
+          echo "All required secrets are present. PUBLIC_MODE=${{ secrets.PUBLIC_MODE }}"
 
       - name: Create config.json from secrets
         env:
@@ -81,37 +131,77 @@ jobs:
           CFG_PUDO_API_KEY: ${{ secrets.PUDO_API_KEY }}
           CFG_API_BASE_URL: ${{ secrets.API_BASE_URL }}
           CFG_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          # Internal Firebase credentials (used when PUBLIC_MODE=false)
           CFG_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           CFG_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           CFG_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          CFG_FIREBASE_DATABASE_ID: ${{ secrets.FIREBASE_DATABASE_ID }}
           CFG_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
           CFG_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
           CFG_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           CFG_FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+          # Public Firebase credentials (used when PUBLIC_MODE=true)
+          CFG_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PUBLIC_FIREBASE_API_KEY }}
+          CFG_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          CFG_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.PUBLIC_FIREBASE_PROJECT_ID }}
+          CFG_PUBLIC_FIREBASE_DATABASE_ID: ${{ secrets.PUBLIC_FIREBASE_DATABASE_ID }}
+          CFG_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          CFG_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          CFG_PUBLIC_FIREBASE_APP_ID: ${{ secrets.PUBLIC_FIREBASE_APP_ID }}
+          CFG_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.PUBLIC_FIREBASE_MEASUREMENT_ID }}
         run: |
           node -e "
             const e = process.env;
             const isPublic = e.CFG_PUBLIC_MODE === 'true';
-            const firebase = {
-              apiKey: e.CFG_FIREBASE_API_KEY,
-              authDomain: e.CFG_FIREBASE_AUTH_DOMAIN,
-              projectId: e.CFG_FIREBASE_PROJECT_ID,
-              storageBucket: e.CFG_FIREBASE_STORAGE_BUCKET,
-              messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
-              appId: e.CFG_FIREBASE_APP_ID,
-              measurementId: e.CFG_FIREBASE_MEASUREMENT_ID,
-            };
-            if (e.CFG_FIREBASE_DATABASE_ID) firebase.databaseId = e.CFG_FIREBASE_DATABASE_ID;
+
+            // Select the correct Firebase config based on build mode.
+            // PUBLIC_MODE=true  → PUBLIC_FIREBASE_* secrets (pudo-booking-pub project)
+            // PUBLIC_MODE=false → FIREBASE_* secrets        (internal project)
+            let firebase;
+            if (isPublic) {
+              firebase = {
+                apiKey:            e.CFG_PUBLIC_FIREBASE_API_KEY,
+                authDomain:        e.CFG_PUBLIC_FIREBASE_AUTH_DOMAIN,
+                projectId:         e.CFG_PUBLIC_FIREBASE_PROJECT_ID,
+                storageBucket:     e.CFG_PUBLIC_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: e.CFG_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+                appId:             e.CFG_PUBLIC_FIREBASE_APP_ID,
+                measurementId:     e.CFG_PUBLIC_FIREBASE_MEASUREMENT_ID,
+              };
+              // Named Firestore database — only present in the public project.
+              if (e.CFG_PUBLIC_FIREBASE_DATABASE_ID) {
+                firebase.databaseId = e.CFG_PUBLIC_FIREBASE_DATABASE_ID;
+              }
+            } else {
+              firebase = {
+                apiKey:            e.CFG_FIREBASE_API_KEY,
+                authDomain:        e.CFG_FIREBASE_AUTH_DOMAIN,
+                projectId:         e.CFG_FIREBASE_PROJECT_ID,
+                storageBucket:     e.CFG_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
+                appId:             e.CFG_FIREBASE_APP_ID,
+                measurementId:     e.CFG_FIREBASE_MEASUREMENT_ID,
+              };
+              // Internal project uses the '(default)' Firestore database — no databaseId needed.
+            }
+
+            // Strip undefined/empty values so config.json stays clean.
+            Object.keys(firebase).forEach(k => { if (!firebase[k]) delete firebase[k]; });
+
             const config = {
               PUBLIC_MODE: isPublic,
+              // PUBLIC_MODE=false: PUDO key baked in. PUBLIC_MODE=true: users supply their own key via Firebase profile.
               PUDO_API_KEY: isPublic ? '' : e.CFG_PUDO_API_KEY,
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
               FIREBASE: firebase,
             };
+
             require('fs').writeFileSync('config.json', JSON.stringify(config, null, 2));
-            console.log('config.json written, PUBLIC_MODE:', config.PUBLIC_MODE, 'databaseId:', firebase.databaseId || '(default)', 'key present:', !!config.PUDO_API_KEY);
+            console.log('config.json written:');
+            console.log('  PUBLIC_MODE   :', config.PUBLIC_MODE);
+            console.log('  Firebase project:', firebase.projectId);
+            console.log('  Firebase database:', firebase.databaseId || '(default)');
+            console.log('  PUDO key present:', !!config.PUDO_API_KEY);
           "
 
       - name: Generate app icons
@@ -131,12 +221,13 @@ jobs:
           cp "$dmg" dist/PudoBookingApp.dmg
 
       - name: Authenticate to Google Cloud
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Upload DMG to Firebase Storage
-        if: true
+        if: ${{ secrets.PUBLIC_MODE == 'true' }}
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp.dmg

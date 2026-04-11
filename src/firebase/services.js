@@ -1,3 +1,39 @@
+/**
+ * Firebase / Firestore service layer
+ *
+ * All reads and writes to Firestore go through this file.  Components and
+ * contexts import named service objects (customerService, bookingService, …)
+ * rather than calling the Firestore SDK directly.
+ *
+ * ── Data layout per build mode ────────────────────────────────────────────────
+ *
+ *  PUBLIC_MODE = false  (INTERNAL build)
+ *    • Data lives in flat, shared root collections:
+ *        /customers/{id}
+ *        /bookings/{id}
+ *        /sender/default
+ *    • All authenticated users share the same data set (single-user dev tool).
+ *    • The users/{uid} document is never read or written.
+ *
+ *  PUBLIC_MODE = true  (PUBLIC / SUBSCRIPTION build)
+ *    • Data lives under each user's sub-collections:
+ *        /users/{uid}/customers/{id}
+ *        /users/{uid}/bookings/{id}
+ *        /users/{uid}/sender/default
+ *    • Every user has their own isolated data set.
+ *    • The users/{uid} ROOT document (not a sub-collection) holds:
+ *        subscriptionStatus   — "active" | "cancelled" | …
+ *        subscriptionEndDate  — Firestore Timestamp
+ *        subscriptionTier     — "starter" | "professional" | "enterprise"
+ *        pudoApiKey           — the user's PUDO API key (set via ApiKeySetupPage)
+ *      This document is managed externally (e.g. by a Stripe webhook in the
+ *      pudo_booking_homepage project) and is READ ONLY from this app.
+ *      The only field this app ever writes is pudoApiKey (via savePudoApiKey).
+ *
+ * getCollectionRef / getDocRef transparently return the correct path for the
+ * active build mode, so service methods work identically in both modes.
+ */
+
 import {
   collection,
   doc,
@@ -22,10 +58,10 @@ import {
 import { db, auth } from "./config";
 import config from "../../config.json";
 
-/**
- * In PUBLIC_MODE, all data lives under users/{uid}/<collection>.
- * In internal mode, data lives at the root <collection> level (original behaviour).
- */
+// ── Path helpers ──────────────────────────────────────────────────────────────
+// PUBLIC_MODE=true  → /users/{uid}/{collection}  (per-user sub-collections)
+// PUBLIC_MODE=false → /{collection}              (shared root collections)
+
 const getCollectionRef = (uid, collectionName) => {
   if (config.PUBLIC_MODE && uid) {
     return collection(db, "users", uid, collectionName);
@@ -40,7 +76,9 @@ const getDocRef = (uid, collectionName, docId) => {
   return doc(db, collectionName, docId);
 };
 
-// ─── Authentication ──────────────────────────────────────────────────────────
+// ── Authentication ─────────────────────────────────────────────────────────────
+// Used in both modes.  Firebase Auth provides the login/logout flow regardless
+// of PUBLIC_MODE; in internal mode it simply gates access to the developer.
 
 export const authService = {
   async signUp(email, password) {
@@ -66,22 +104,30 @@ export const authService = {
   },
 };
 
-// ─── User Profile (PUBLIC_MODE only) ─────────────────────────────────────────
+// ── User Profile (PUBLIC_MODE=true only) ──────────────────────────────────────
+// Reads/writes the users/{uid} ROOT document in the PUBLIC Firestore database.
+// This document is the source of truth for subscription state and the PUDO key.
+// It is written externally (Stripe webhook) and read here on every login.
 
 export const userProfileService = {
+  // Returns the document data object, or null if the document does not exist.
   async get(uid) {
     const ref = doc(db, "users", uid);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data() : null;
   },
 
+  // Called by ApiKeySetupPage after the user saves their PUDO API key.
+  // Uses merge:true so it never overwrites subscription fields set by the webhook.
   async savePudoApiKey(uid, pudoApiKey) {
     const ref = doc(db, "users", uid);
     await setDoc(ref, { pudoApiKey, updatedAt: serverTimestamp() }, { merge: true });
   },
 };
 
-// ─── Customers ───────────────────────────────────────────────────────────────
+// ── Customers ─────────────────────────────────────────────────────────────────
+// PUBLIC_MODE=true  → /users/{uid}/customers/
+// PUBLIC_MODE=false → /customers/
 
 export const customerService = {
   async getAll(uid) {
@@ -115,7 +161,9 @@ export const customerService = {
   },
 };
 
-// ─── Sender ──────────────────────────────────────────────────────────────────
+// ── Sender details ────────────────────────────────────────────────────────────
+// PUBLIC_MODE=true  → /users/{uid}/sender/default
+// PUBLIC_MODE=false → /sender/default
 
 export const senderService = {
   async get(uid) {
@@ -136,7 +184,9 @@ export const senderService = {
   },
 };
 
-// ─── Bookings ────────────────────────────────────────────────────────────────
+// ── Bookings ──────────────────────────────────────────────────────────────────
+// PUBLIC_MODE=true  → /users/{uid}/bookings/
+// PUBLIC_MODE=false → /bookings/
 
 export const bookingService = {
   async getAll(uid) {

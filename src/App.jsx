@@ -145,7 +145,12 @@ const AppContent = () => {
     );
   }
 
-  // ── Subscription expired / payment failed (PUBLIC_MODE only) ──────────────
+  // ── Subscription gate (PUBLIC_MODE=true only) ─────────────────────────────
+  // In PUBLIC_MODE=false this block is never reached because publicMode=false.
+  // In PUBLIC_MODE=true, subscriptionValid is set by AuthContext after reading
+  // the users/{uid} Firestore document.  If the document is missing or the
+  // subscription has lapsed the user sees SubscriptionExpiredPage which lets
+  // them re-check once they have subscribed/renewed.
   if (publicMode && !subscriptionValid) {
     return (
       <ThemeProvider theme={theme}>
@@ -155,7 +160,11 @@ const AppContent = () => {
     );
   }
 
-  // ── PUDO API key not yet set (PUBLIC_MODE only) ────────────────────────────
+  // ── PUDO API key gate (PUBLIC_MODE=true only) ──────────────────────────────
+  // In PUBLIC_MODE=false the key is baked into config.PUDO_API_KEY at build time
+  // so pudoApiKey is always set and this block is never reached.
+  // In PUBLIC_MODE=true the key is stored per-user in Firestore.  New subscribers
+  // who have not yet entered their key are directed to ApiKeySetupPage.
   if (publicMode && !pudoApiKey) {
     return (
       <ThemeProvider theme={theme}>

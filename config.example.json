@@ -1,16 +1,47 @@
 {
+  "_comment": [
+    "Copy this file to config.json and fill in your values for local development.",
+    "",
+    "TWO BUILD MODES — set PUBLIC_MODE to choose:",
+    "",
+    "  PUBLIC_MODE = false  (INTERNAL build)",
+    "    - Single-user developer build.",
+    "    - PUDO_API_KEY is baked into the app.",
+    "    - No subscription checks at runtime.",
+    "    - Uses the INTERNAL Firebase project.",
+    "    - FIREBASE.databaseId is NOT needed (uses the default Firestore database).",
+    "",
+    "  PUBLIC_MODE = true  (PUBLIC / SUBSCRIPTION build)",
+    "    - Multi-user build for paying customers.",
+    "    - PUDO_API_KEY should be empty; users supply their own key via their profile.",
+    "    - Subscription is validated on every login via Firestore.",
+    "    - Uses the PUBLIC Firebase project (pudo-booking-pub).",
+    "    - FIREBASE.databaseId is required if the project uses a named Firestore",
+    "      database (e.g. 'pudo-booking-pub' instead of the default database).",
+    "",
+    "In CI/CD the correct values are injected automatically from GitHub Secrets:",
+    "  PUBLIC_MODE=false → FIREBASE_* secrets are used",
+    "  PUBLIC_MODE=true  → PUBLIC_FIREBASE_* secrets are used",
+    "See .github/workflows/build-mac.yml for the full secret reference."
+  ],
+
   "PUBLIC_MODE": false,
+
   "PUDO_API_KEY": "your_pudo_api_key_here",
   "API_BASE_URL": "https://api-pudo.co.za/api/v1",
   "GOOGLE_MAPS_API_KEY": "your_google_maps_api_key_here",
+
   "FIREBASE": {
+    "_comment_internal": "Use these fields for PUBLIC_MODE=false (internal project)",
     "apiKey": "your_firebase_api_key_here",
-    "authDomain": "your_project.firebaseapp.com",
-    "projectId": "your_project_id",
-    "databaseId": "your_database_id_or_omit_for_default",
-    "storageBucket": "your_project.firebasestorage.app",
+    "authDomain": "your-internal-project.firebaseapp.com",
+    "projectId": "your-internal-project-id",
+    "storageBucket": "your-internal-project.firebasestorage.app",
     "messagingSenderId": "your_messaging_sender_id",
     "appId": "your_app_id",
-    "measurementId": "your_measurement_id"
+    "measurementId": "your_measurement_id",
+
+    "_comment_public": "For PUBLIC_MODE=true also add:",
+    "_databaseId_note": "databaseId — named Firestore database (e.g. 'pudo-booking-pub'). Omit for the default database."
   }
 }
