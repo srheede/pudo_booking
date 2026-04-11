@@ -25,6 +25,8 @@ const app = initializeApp(firebaseConfig);
 
 // If a named Firestore database is configured (e.g. "pudo-booking-pub"), use
 // it. Omitting the second argument defaults to the "(default)" database.
+const _dbId = firebaseConfig.databaseId || "(default)";
+console.log(`[Firebase] Connecting to project="${firebaseConfig.projectId}" database="${_dbId}"`);
 export const db = firebaseConfig.databaseId
   ? getFirestore(app, firebaseConfig.databaseId)
   : getFirestore(app);
