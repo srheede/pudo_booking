@@ -86,7 +86,7 @@ const toZoneCode = (province) => {
 };
 
 const BookingsPage = () => {
-  const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode } = useAuth();
+  const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode, userProfile } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
@@ -122,7 +122,12 @@ const BookingsPage = () => {
       const [customersData, senderData, monthlyCount] = await Promise.all([
         customerService.getAll(user?.uid),
         senderService.get(user?.uid),
-        bookingService.getMonthlyCount(user?.uid),
+        bookingService.getMonthlyCount(
+          user?.uid,
+          userProfile?.lastPaymentDate
+            ? new Date(userProfile.lastPaymentDate.seconds * 1000)
+            : null
+        ),
       ]);
       setCustomers(customersData);
       setSender(senderData);
@@ -256,7 +261,7 @@ const BookingsPage = () => {
 
     if (wouldExceedLimit) {
       showSnackbar(
-        `This would exceed your monthly booking limit (${maxMonthlyBookings}/month on ${subscriptionTier} plan). You have ${remainingBookings} booking${remainingBookings === 1 ? "" : "s"} remaining this month.`,
+        `This would exceed your booking limit (${maxMonthlyBookings}/month on ${subscriptionTier} plan). You have ${remainingBookings} booking${remainingBookings === 1 ? "" : "s"} remaining this billing period.`,
         "warning"
       );
       return;
@@ -592,8 +597,8 @@ const BookingsPage = () => {
           sx={{ mb: 2 }}
         >
           {monthlyBookingCount >= maxMonthlyBookings
-            ? `You have used all ${maxMonthlyBookings} bookings for this month on your ${subscriptionTier} plan. Upgrade your plan to continue booking.`
-            : `Monthly bookings: ${monthlyBookingCount} / ${maxMonthlyBookings} used (${remainingBookings} remaining).`}
+            ? `You have used all ${maxMonthlyBookings} bookings for this billing period on your ${subscriptionTier} plan. Upgrade your plan to continue booking.`
+            : `Bookings this billing period: ${monthlyBookingCount} / ${maxMonthlyBookings} used (${remainingBookings} remaining).`}
         </Alert>
       )}
 
