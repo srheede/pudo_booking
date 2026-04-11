@@ -73,6 +73,7 @@ jobs:
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Exposed as env so step `if:` can branch — GitHub forbids `secrets` in `if:`.
       PUBLIC_MODE: ${{ secrets.PUBLIC_MODE }}
 
     steps:
@@ -214,13 +215,13 @@ jobs:
           Copy-Item $exe.FullName "dist\PudoBookingApp-Setup.exe"
 
       - name: Authenticate to Google Cloud
-        if: ${{ secrets.PUBLIC_MODE == 'true' }}
+        if: env.PUBLIC_MODE == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Upload installer to Firebase Storage
-        if: ${{ secrets.PUBLIC_MODE == 'true' }}
+        if: env.PUBLIC_MODE == 'true'
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp-Setup.exe
