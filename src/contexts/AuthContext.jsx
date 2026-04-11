@@ -51,35 +51,15 @@ const DEFAULT_TIER = "professional";
 // Reads the users/{uid} Firestore document and checks:
 //   1. subscriptionStatus === "active"
 //   2. subscriptionEndDate exists and is in the future
-// Returns false (and logs a warning) for any failing condition so the cause is
-// visible in DevTools without needing to read the source.
 const isSubscriptionValid = (profileData) => {
-  if (!profileData) {
-    console.warn("[Auth] isSubscriptionValid: profileData is null/undefined — no Firestore document found for this user.");
-    return false;
-  }
-  console.log("[Auth] isSubscriptionValid: checking profile fields:", {
-    subscriptionStatus: profileData.subscriptionStatus,
-    subscriptionEndDate: profileData.subscriptionEndDate,
-    subscriptionTier: profileData.subscriptionTier,
-    allKeys: Object.keys(profileData),
-  });
-  if (profileData.subscriptionStatus !== "active") {
-    console.warn(`[Auth] isSubscriptionValid: subscriptionStatus is "${profileData.subscriptionStatus}", expected "active".`);
-    return false;
-  }
-  if (!profileData.subscriptionEndDate) {
-    console.warn("[Auth] isSubscriptionValid: subscriptionEndDate is missing.");
-    return false;
-  }
+  if (!profileData) return false;
+  if (profileData.subscriptionStatus !== "active") return false;
+  if (!profileData.subscriptionEndDate) return false;
   // Firestore Timestamps have a .seconds property; plain ISO strings do not.
   const endDate = profileData.subscriptionEndDate.seconds
     ? new Date(profileData.subscriptionEndDate.seconds * 1000)
     : new Date(profileData.subscriptionEndDate);
-  if (endDate <= new Date()) {
-    console.warn(`[Auth] isSubscriptionValid: subscriptionEndDate (${endDate.toISOString()}) is in the past.`);
-    return false;
-  }
+  if (endDate <= new Date()) return false;
   return true;
 };
 
@@ -120,20 +100,16 @@ export const AuthProvider = ({ children }) => {
   const loadUserProfile = useCallback(async (firebaseUser) => {
     if (!config.PUBLIC_MODE || !firebaseUser) return;
 
-    console.log(`[Auth] Loading profile for uid: ${firebaseUser.uid} (email: ${firebaseUser.email})`);
-
     let profile;
     try {
       profile = await userProfileService.get(firebaseUser.uid);
     } catch (err) {
       // A read error (e.g. wrong database, network failure) should never leave
       // the user stuck on the loading spinner.  Treat it as a missing profile
-      // so the subscription page is shown with a meaningful error in the console.
+      // so the subscription page is shown.
       console.error("[Auth] Failed to read Firestore user document:", err);
       profile = null;
     }
-
-    console.log("[Auth] Firestore users/{uid} document:", profile);
     setUserProfile(profile);
 
     const valid = isSubscriptionValid(profile);
@@ -178,6 +154,22 @@ export const AuthProvider = ({ children }) => {
       unsubscribe();
     };
   }, [loadUserProfile]);
+
+  // ── Periodic subscription re-validation (PUBLIC_MODE=true only) ──────────────
+  // Re-reads the Firestore profile once per day so that a subscription
+  // which expires at midnight is caught even if the app is never closed.
+  // When the subscription becomes invalid, App.jsx's gate renders
+  // SubscriptionExpiredPage automatically.
+  useEffect(() => {
+    if (!config.PUBLIC_MODE || !user) return;
+
+    const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const intervalId = setInterval(() => {
+      loadUserProfile(user);
+    }, INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [user, loadUserProfile]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
 

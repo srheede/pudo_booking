@@ -7,7 +7,6 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Collapse,
 } from "@mui/material";
 import {
   CreditCard as CreditCardIcon,
@@ -18,21 +17,13 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 
-const HOMEPAGE_URL = "https://pudo-booking-pub.web.app";
+const HOMEPAGE_URL = "https://pudo-booking.web.app";
 
 export default function SubscriptionExpiredPage() {
   const { user, signOut, refreshProfile, userProfile } = useAuth();
   const isNewUser = userProfile === null;
-
-  // Log the raw profile so developers can see what came back from Firestore
-  // without having to open DevTools.
-  React.useEffect(() => {
-    console.log("[SubscriptionExpiredPage] userProfile:", userProfile);
-    console.log("[SubscriptionExpiredPage] user uid:", user?.uid);
-  }, [userProfile, user]);
   const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
 
   const handleOpenHomepage = () => {
     try {
@@ -165,44 +156,6 @@ export default function SubscriptionExpiredPage() {
               Signed in as {user.email}
             </Typography>
           )}
-
-          {/* Diagnostic panel — helps identify Firestore data issues */}
-          <Box sx={{ mt: 2 }}>
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => setShowDebug((v) => !v)}
-              sx={{ color: "text.disabled", fontSize: "0.7rem" }}
-            >
-              {showDebug ? "Hide diagnostics" : "Show diagnostics"}
-            </Button>
-            <Collapse in={showDebug}>
-              <Box
-                sx={{
-                  mt: 1,
-                  p: 2,
-                  bgcolor: "grey.100",
-                  borderRadius: 1,
-                  textAlign: "left",
-                  fontSize: "0.7rem",
-                  fontFamily: "monospace",
-                  wordBreak: "break-all",
-                }}
-              >
-                <Typography variant="caption" component="div" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Firebase uid: {user?.uid ?? "—"}
-                </Typography>
-                <Typography variant="caption" component="div" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Firestore users/&#123;uid&#125; document:
-                </Typography>
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "inherit" }}>
-                  {userProfile === null
-                    ? "null — document does not exist"
-                    : JSON.stringify(userProfile, null, 2)}
-                </pre>
-              </Box>
-            </Collapse>
-          </Box>
         </CardContent>
       </Card>
     </Box>

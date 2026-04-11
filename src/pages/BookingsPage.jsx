@@ -336,8 +336,6 @@ const BookingsPage = () => {
             service_level_code: serviceCode,
           };
 
-          console.log("Creating shipment with payload:", payload);
-
           let shipmentResult;
           if (ipcRenderer) {
             shipmentResult = await ipcRenderer.invoke(

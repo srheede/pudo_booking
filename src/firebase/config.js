@@ -57,9 +57,6 @@ const app = initializeApp(firebaseConfig);
 
 // PUBLIC_MODE=true  → may connect to a named Firestore database via databaseId.
 // PUBLIC_MODE=false → always uses the "(default)" database; no databaseId in config.
-const _dbId = firebaseConfig.databaseId || "(default)";
-console.log(`[Firebase] project="${firebaseConfig.projectId}" database="${_dbId}" publicMode=${config.PUBLIC_MODE}`);
-
 export const db = firebaseConfig.databaseId
   ? getFirestore(app, firebaseConfig.databaseId)
   : getFirestore(app);
