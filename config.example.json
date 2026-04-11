@@ -7,6 +7,7 @@
     "apiKey": "your_firebase_api_key_here",
     "authDomain": "your_project.firebaseapp.com",
     "projectId": "your_project_id",
+    "databaseId": "your_database_id_or_omit_for_default",
     "storageBucket": "your_project.firebasestorage.app",
     "messagingSenderId": "your_messaging_sender_id",
     "appId": "your_app_id",

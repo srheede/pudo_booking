@@ -23,13 +23,32 @@ export const TIER_LIMITS = {
 const DEFAULT_TIER = "professional";
 
 const isSubscriptionValid = (profileData) => {
-  if (!profileData) return false;
-  if (profileData.subscriptionStatus !== "active") return false;
-  if (!profileData.subscriptionEndDate) return false;
+  if (!profileData) {
+    console.warn("[Auth] isSubscriptionValid: profileData is null/undefined — no Firestore document found for this user.");
+    return false;
+  }
+  console.log("[Auth] isSubscriptionValid: checking profile fields:", {
+    subscriptionStatus: profileData.subscriptionStatus,
+    subscriptionEndDate: profileData.subscriptionEndDate,
+    subscriptionTier: profileData.subscriptionTier,
+    allKeys: Object.keys(profileData),
+  });
+  if (profileData.subscriptionStatus !== "active") {
+    console.warn(`[Auth] isSubscriptionValid: subscriptionStatus is "${profileData.subscriptionStatus}", expected "active".`);
+    return false;
+  }
+  if (!profileData.subscriptionEndDate) {
+    console.warn("[Auth] isSubscriptionValid: subscriptionEndDate is missing.");
+    return false;
+  }
   const endDate = profileData.subscriptionEndDate.seconds
     ? new Date(profileData.subscriptionEndDate.seconds * 1000)
     : new Date(profileData.subscriptionEndDate);
-  return endDate > new Date();
+  if (endDate <= new Date()) {
+    console.warn(`[Auth] isSubscriptionValid: subscriptionEndDate (${endDate.toISOString()}) is in the past.`);
+    return false;
+  }
+  return true;
 };
 
 const notifyMainProcessApiKey = async (apiKey) => {
@@ -51,7 +70,17 @@ export const AuthProvider = ({ children }) => {
 
   const loadUserProfile = useCallback(async (firebaseUser) => {
     if (!config.PUBLIC_MODE || !firebaseUser) return;
-    const profile = await userProfileService.get(firebaseUser.uid);
+    console.log(`[Auth] Loading profile for uid: ${firebaseUser.uid} (email: ${firebaseUser.email})`);
+    let profile;
+    try {
+      profile = await userProfileService.get(firebaseUser.uid);
+    } catch (err) {
+      console.error("[Auth] Failed to read Firestore user document:", err);
+      // Treat a read error the same as a missing document so the UI renders
+      // the subscription page rather than hanging on the loading spinner.
+      profile = null;
+    }
+    console.log("[Auth] Firestore users/{uid} document:", profile);
     setUserProfile(profile);
     const valid = isSubscriptionValid(profile);
     setSubscriptionValid(valid);

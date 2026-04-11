@@ -15,6 +15,7 @@ name: Build macOS Executable
 #   FIREBASE_API_KEY              — Firebase API key
 #   FIREBASE_AUTH_DOMAIN          — Firebase auth domain
 #   FIREBASE_PROJECT_ID           — Firebase project ID
+#   FIREBASE_DATABASE_ID          — Firestore database ID (leave empty for "(default)")
 #   FIREBASE_STORAGE_BUCKET       — Firebase storage bucket
 #   FIREBASE_MESSAGING_SENDER_ID  — Firebase messaging sender ID
 #   FIREBASE_APP_ID               — Firebase app ID
@@ -83,6 +84,7 @@ jobs:
           CFG_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           CFG_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           CFG_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          CFG_FIREBASE_DATABASE_ID: ${{ secrets.FIREBASE_DATABASE_ID }}
           CFG_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
           CFG_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
           CFG_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
@@ -91,23 +93,25 @@ jobs:
           node -e "
             const e = process.env;
             const isPublic = e.CFG_PUBLIC_MODE === 'true';
+            const firebase = {
+              apiKey: e.CFG_FIREBASE_API_KEY,
+              authDomain: e.CFG_FIREBASE_AUTH_DOMAIN,
+              projectId: e.CFG_FIREBASE_PROJECT_ID,
+              storageBucket: e.CFG_FIREBASE_STORAGE_BUCKET,
+              messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
+              appId: e.CFG_FIREBASE_APP_ID,
+              measurementId: e.CFG_FIREBASE_MEASUREMENT_ID,
+            };
+            if (e.CFG_FIREBASE_DATABASE_ID) firebase.databaseId = e.CFG_FIREBASE_DATABASE_ID;
             const config = {
               PUBLIC_MODE: isPublic,
               PUDO_API_KEY: isPublic ? '' : e.CFG_PUDO_API_KEY,
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
-              FIREBASE: {
-                apiKey: e.CFG_FIREBASE_API_KEY,
-                authDomain: e.CFG_FIREBASE_AUTH_DOMAIN,
-                projectId: e.CFG_FIREBASE_PROJECT_ID,
-                storageBucket: e.CFG_FIREBASE_STORAGE_BUCKET,
-                messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
-                appId: e.CFG_FIREBASE_APP_ID,
-                measurementId: e.CFG_FIREBASE_MEASUREMENT_ID
-              }
+              FIREBASE: firebase,
             };
             require('fs').writeFileSync('config.json', JSON.stringify(config, null, 2));
-            console.log('config.json written, PUBLIC_MODE:', config.PUBLIC_MODE, 'key present:', !!config.PUDO_API_KEY);
+            console.log('config.json written, PUBLIC_MODE:', config.PUBLIC_MODE, 'databaseId:', firebase.databaseId || '(default)', 'key present:', !!config.PUDO_API_KEY);
           "
 
       - name: Generate app icons

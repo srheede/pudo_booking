@@ -23,7 +23,11 @@ if (missingKeys.length > 0) {
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
+// If a named Firestore database is configured (e.g. "pudo-booking-pub"), use
+// it. Omitting the second argument defaults to the "(default)" database.
+export const db = firebaseConfig.databaseId
+  ? getFirestore(app, firebaseConfig.databaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
 
 export default app;
