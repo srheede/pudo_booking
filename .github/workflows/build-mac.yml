@@ -96,27 +96,44 @@ jobs:
 
       - name: Validate required secrets
         shell: bash
+        # Secrets are passed as env vars to avoid inline interpolation issues with
+        # multi-line values (e.g. FIREBASE_SERVICE_ACCOUNT_JSON) that break bash's [ test.
+        env:
+          SECRET_PUBLIC_MODE: ${{ secrets.PUBLIC_MODE }}
+          SECRET_API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SECRET_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PUBLIC_FIREBASE_API_KEY }}
+          SECRET_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          SECRET_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.PUBLIC_FIREBASE_PROJECT_ID }}
+          SECRET_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          SECRET_PUBLIC_FIREBASE_APP_ID: ${{ secrets.PUBLIC_FIREBASE_APP_ID }}
+          SECRET_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          SECRET_PUDO_API_KEY: ${{ secrets.PUDO_API_KEY }}
+          SECRET_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          SECRET_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          SECRET_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          SECRET_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          SECRET_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
         run: |
           missing=""
-          [ -z "${{ secrets.PUBLIC_MODE }}" ]    && missing="$missing PUBLIC_MODE"
-          [ -z "${{ secrets.API_BASE_URL }}" ]   && missing="$missing API_BASE_URL"
+          [ -z "$SECRET_PUBLIC_MODE" ]    && missing="$missing PUBLIC_MODE"
+          [ -z "$SECRET_API_BASE_URL" ]   && missing="$missing API_BASE_URL"
 
-          if [ "${{ secrets.PUBLIC_MODE }}" = "true" ]; then
+          if [ "$SECRET_PUBLIC_MODE" = "true" ]; then
             # ── Public mode: require PUBLIC_FIREBASE_* + service account for Storage upload ─
-            [ -z "${{ secrets.PUBLIC_FIREBASE_API_KEY }}" ]             && missing="$missing PUBLIC_FIREBASE_API_KEY"
-            [ -z "${{ secrets.PUBLIC_FIREBASE_AUTH_DOMAIN }}" ]         && missing="$missing PUBLIC_FIREBASE_AUTH_DOMAIN"
-            [ -z "${{ secrets.PUBLIC_FIREBASE_PROJECT_ID }}" ]          && missing="$missing PUBLIC_FIREBASE_PROJECT_ID"
-            [ -z "${{ secrets.PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" ] && missing="$missing PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
-            [ -z "${{ secrets.PUBLIC_FIREBASE_APP_ID }}" ]              && missing="$missing PUBLIC_FIREBASE_APP_ID"
-            [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" ]       && missing="$missing FIREBASE_SERVICE_ACCOUNT_JSON"
+            [ -z "$SECRET_PUBLIC_FIREBASE_API_KEY" ]             && missing="$missing PUBLIC_FIREBASE_API_KEY"
+            [ -z "$SECRET_PUBLIC_FIREBASE_AUTH_DOMAIN" ]         && missing="$missing PUBLIC_FIREBASE_AUTH_DOMAIN"
+            [ -z "$SECRET_PUBLIC_FIREBASE_PROJECT_ID" ]          && missing="$missing PUBLIC_FIREBASE_PROJECT_ID"
+            [ -z "$SECRET_PUBLIC_FIREBASE_MESSAGING_SENDER_ID" ] && missing="$missing PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+            [ -z "$SECRET_PUBLIC_FIREBASE_APP_ID" ]              && missing="$missing PUBLIC_FIREBASE_APP_ID"
+            [ -z "$SECRET_FIREBASE_SERVICE_ACCOUNT_JSON" ]       && missing="$missing FIREBASE_SERVICE_ACCOUNT_JSON"
           else
             # ── Internal mode: require PUDO_API_KEY + FIREBASE_* credentials ─
-            [ -z "${{ secrets.PUDO_API_KEY }}" ]               && missing="$missing PUDO_API_KEY"
-            [ -z "${{ secrets.FIREBASE_API_KEY }}" ]           && missing="$missing FIREBASE_API_KEY"
-            [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]       && missing="$missing FIREBASE_AUTH_DOMAIN"
-            [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]        && missing="$missing FIREBASE_PROJECT_ID"
-            [ -z "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" ] && missing="$missing FIREBASE_MESSAGING_SENDER_ID"
-            [ -z "${{ secrets.FIREBASE_APP_ID }}" ]            && missing="$missing FIREBASE_APP_ID"
+            [ -z "$SECRET_PUDO_API_KEY" ]               && missing="$missing PUDO_API_KEY"
+            [ -z "$SECRET_FIREBASE_API_KEY" ]           && missing="$missing FIREBASE_API_KEY"
+            [ -z "$SECRET_FIREBASE_AUTH_DOMAIN" ]       && missing="$missing FIREBASE_AUTH_DOMAIN"
+            [ -z "$SECRET_FIREBASE_PROJECT_ID" ]        && missing="$missing FIREBASE_PROJECT_ID"
+            [ -z "$SECRET_FIREBASE_MESSAGING_SENDER_ID" ] && missing="$missing FIREBASE_MESSAGING_SENDER_ID"
+            [ -z "$SECRET_FIREBASE_APP_ID" ]            && missing="$missing FIREBASE_APP_ID"
           fi
 
           if [ -n "$missing" ]; then
@@ -124,7 +141,7 @@ jobs:
             echo "Go to repo Settings → Secrets and variables → Actions and add the missing secrets."
             exit 1
           fi
-          echo "All required secrets are present. PUBLIC_MODE=${{ secrets.PUBLIC_MODE }}"
+          echo "All required secrets are present. PUBLIC_MODE=$SECRET_PUBLIC_MODE"
 
       - name: Create config.json from secrets
         env:

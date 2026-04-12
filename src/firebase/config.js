@@ -55,6 +55,9 @@ if (missingKeys.length > 0) {
 
 const app = initializeApp(firebaseConfig);
 
+const _dbId = firebaseConfig.databaseId || "(default)";
+console.log(`[Firebase] project="${firebaseConfig.projectId}" database="${_dbId}" publicMode=${config.PUBLIC_MODE}`);
+
 // PUBLIC_MODE=true  → may connect to a named Firestore database via databaseId.
 // PUBLIC_MODE=false → always uses the "(default)" database; no databaseId in config.
 export const db = firebaseConfig.databaseId
