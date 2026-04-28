@@ -183,39 +183,12 @@ const BookingsPage = () => {
   };
 
   const handleSelectionChange = (newSelection) => {
-    // visibleCustomers is derived from filteredCustomers + paginationModel below,
-    // but we can recompute it here to keep this handler self-contained.
-    const pageStart = paginationModel.page * paginationModel.pageSize;
-    const pageIds = new Set(
-      filteredCustomers.slice(pageStart, pageStart + paginationModel.pageSize).map((c) => c.id)
-    );
-    const prevSet = new Set(selectedCustomers);
-
-    // If any newly-added IDs are from outside the current page the DataGrid's
-    // built-in "select all rows" header was clicked → clip to page only.
-    const offPageAdded = newSelection.some((id) => !prevSet.has(id) && !pageIds.has(id));
-
-    let finalSelection;
-    if (offPageAdded) {
-      // Select all header clicked: merge current page into existing selection
-      finalSelection = [...new Set([...selectedCustomers, ...pageIds])];
-    } else if (newSelection.length === 0 && selectedCustomers.length > 0) {
-      // Deselect all header clicked.
-      // If everything was selected (via "select all" banner), clear the whole selection.
-      // Otherwise only remove the current page's items to preserve other pages.
-      finalSelection = allFilteredSelected
-        ? []
-        : selectedCustomers.filter((id) => !pageIds.has(id));
-    } else {
-      finalSelection = newSelection;
-    }
-
-    setSelectedCustomers(finalSelection);
+    setSelectedCustomers(newSelection);
     setAllFilteredSelected(false);
 
     // Initialize sizes for newly selected customers
     const newSizes = { ...customerSizes };
-    finalSelection.forEach((customerId) => {
+    newSelection.forEach((customerId) => {
       if (!newSizes[customerId]) {
         newSizes[customerId] = defaultSize;
       }
@@ -574,7 +547,11 @@ const BookingsPage = () => {
         size="small"
         placeholder="Search customers…"
         value={searchQuery}
-        onChange={(e) => { setSearchQuery(e.target.value); setAllFilteredSelected(false); }}
+        onChange={(e) => {
+          setSearchQuery(e.target.value);
+          setAllFilteredSelected(false);
+          setPaginationModel((prev) => ({ ...prev, page: 0 }));
+        }}
         sx={{ mb: 2, width: 320 }}
         InputProps={{
           startAdornment: (
@@ -639,6 +616,7 @@ const BookingsPage = () => {
           columns={columns}
           loading={loading}
           checkboxSelection
+          keepNonExistentRowsSelected
           rowSelectionModel={selectedCustomers}
           onRowSelectionModelChange={handleSelectionChange}
           paginationModel={paginationModel}

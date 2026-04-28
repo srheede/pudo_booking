@@ -73,13 +73,17 @@ function createWindow() {
 app.whenReady().then(() => {
   // Set a Content Security Policy that covers all external services the app uses.
   const { session } = require("electron");
+  const isDev = process.env.NODE_ENV === "development" || process.env.ELECTRON_DEV === "1";
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
           "default-src 'self';" +
-          " script-src 'self' https://maps.googleapis.com;" +
+          // 'unsafe-inline' is needed in dev for Vite's React Fast Refresh inline script.
+          (isDev
+            ? " script-src 'self' 'unsafe-inline' https://maps.googleapis.com;"
+            : " script-src 'self' https://maps.googleapis.com;") +
           " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;" +
           " font-src 'self' https://fonts.gstatic.com;" +
           " img-src 'self' data: https:;" +
