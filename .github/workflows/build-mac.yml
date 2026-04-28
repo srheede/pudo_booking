@@ -239,13 +239,11 @@ jobs:
           cp "$dmg" dist/PudoBookingApp.dmg
 
       - name: Authenticate to Google Cloud
-        if: env.PUBLIC_MODE == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Upload DMG to Firebase Storage
-        if: env.PUBLIC_MODE == 'true'
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp.dmg
