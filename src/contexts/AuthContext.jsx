@@ -19,10 +19,15 @@
  *    • pudoApiKey is stored in the users/{uid} Firestore document and set in
  *      the Electron main process via IPC so API calls work immediately.
  *    • refreshProfile() lets the user re-check after subscribing/renewing.
+ *    • Privileged emails listed in config.INTERNAL_EMAILS authenticate against
+ *      the internal Firebase project (when INTERNAL_FIREBASE is present) and
+ *      get the private/internal experience: shared collections, baked PUDO key,
+ *      no subscription gates.  publicMode is false for those sessions.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { authService, userProfileService } from "../firebase/services";
+import { isInternalSession } from "../firebase/config";
 import config from "../../config.json";
 
 const AuthContext = createContext();
@@ -82,7 +87,11 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // subscriptionValid and userProfile are only meaningful in PUBLIC_MODE=true.
+  // Effective runtime mode: false for internal builds and for privileged emails
+  // signed into the private Firebase project from a public build.
+  const [publicMode, setPublicMode] = useState(config.PUBLIC_MODE === true);
+
+  // subscriptionValid and userProfile are only meaningful in public sessions.
   // In internal mode they remain at their initial values and are never checked.
   const [subscriptionValid, setSubscriptionValid] = useState(false);
   const [subscriptionTier, setSubscriptionTier] = useState(DEFAULT_TIER);
@@ -93,12 +102,12 @@ export const AuthProvider = ({ children }) => {
   // object     = document loaded successfully
   const [userProfile, setUserProfile] = useState(undefined);
 
-  // ── Profile loader (PUBLIC_MODE=true only) ──────────────────────────────────
+  // ── Profile loader (public sessions only) ───────────────────────────────────
   // Reads users/{uid} from the PUBLIC project's Firestore database, validates
   // the subscription, and wires up the PUDO API key.
-  // In PUBLIC_MODE=false this is a no-op — no Firestore reads are ever made.
+  // For internal sessions this is a no-op — no Firestore profile reads.
   const loadUserProfile = useCallback(async (firebaseUser) => {
-    if (!config.PUBLIC_MODE || !firebaseUser) return;
+    if (!config.PUBLIC_MODE || isInternalSession || !firebaseUser) return;
 
     let profile;
     try {
@@ -127,6 +136,19 @@ export const AuthProvider = ({ children }) => {
     setPudoApiKey(key);
   }, []);
 
+  // Internal / private session: skip subscription, use baked PUDO key.
+  const activateInternalSession = useCallback(async () => {
+    setPublicMode(false);
+    setSubscriptionValid(true);
+    setSubscriptionTier(DEFAULT_TIER);
+    setUserProfile(null);
+    const key = config.PUDO_API_KEY || null;
+    if (key) {
+      await notifyMainProcessApiKey(key);
+    }
+    setPudoApiKey(key);
+  }, []);
+
   // ── Auth state listener ─────────────────────────────────────────────────────
   useEffect(() => {
     // Safety net: if Firebase Auth never fires (e.g. offline / blocked), stop
@@ -137,14 +159,19 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timeout);
       setUser(firebaseUser);
       if (firebaseUser) {
-        // PUBLIC_MODE=true : loads the Firestore profile and validates subscription.
-        // PUBLIC_MODE=false: loadUserProfile is a no-op; app proceeds directly.
-        await loadUserProfile(firebaseUser);
+        if (isInternalSession || !config.PUBLIC_MODE) {
+          await activateInternalSession();
+        } else {
+          setPublicMode(true);
+          await loadUserProfile(firebaseUser);
+        }
       } else {
         // User signed out — clear all subscription state.
+        setPublicMode(config.PUBLIC_MODE === true);
         setSubscriptionValid(false);
         setPudoApiKey(null);
         setUserProfile(undefined);
+        await notifyMainProcessApiKey(null);
       }
       setLoading(false);
     });
@@ -153,15 +180,15 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timeout);
       unsubscribe();
     };
-  }, [loadUserProfile]);
+  }, [loadUserProfile, activateInternalSession]);
 
-  // ── Periodic subscription re-validation (PUBLIC_MODE=true only) ──────────────
+  // ── Periodic subscription re-validation (public sessions only) ──────────────
   // Re-reads the Firestore profile once per day so that a subscription
   // which expires at midnight is caught even if the app is never closed.
   // When the subscription becomes invalid, App.jsx's gate renders
   // SubscriptionExpiredPage automatically.
   useEffect(() => {
-    if (!config.PUBLIC_MODE || !user) return;
+    if (!publicMode || !user) return;
 
     const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
     const intervalId = setInterval(() => {
@@ -169,7 +196,7 @@ export const AuthProvider = ({ children }) => {
     }, INTERVAL_MS);
 
     return () => clearInterval(intervalId);
-  }, [user, loadUserProfile]);
+  }, [user, publicMode, loadUserProfile]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
 
@@ -183,9 +210,11 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     await authService.signOut();
+    setPublicMode(config.PUBLIC_MODE === true);
     setSubscriptionValid(false);
     setSubscriptionTier(DEFAULT_TIER);
     setPudoApiKey(null);
+    await notifyMainProcessApiKey(null);
   };
 
   // Saves a new PUDO API key to Firestore and notifies the main process.
@@ -209,14 +238,14 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     loading,
-    // publicMode mirrors config.PUBLIC_MODE so components don't import config directly.
-    publicMode: config.PUBLIC_MODE,
-    // The fields below are only meaningful in PUBLIC_MODE=true.
-    // In PUBLIC_MODE=false: subscriptionValid=false but the gate in App.jsx is
+    // Effective runtime mode (false for privileged private sessions in public builds).
+    publicMode,
+    // The fields below are only meaningful in public sessions.
+    // In internal mode: subscriptionValid may be true but the gate in App.jsx is
     // skipped (it checks publicMode first), so the app is always accessible.
     subscriptionValid,
     subscriptionTier,
-    tierLimits: config.PUBLIC_MODE
+    tierLimits: publicMode
       ? (TIER_LIMITS[subscriptionTier] ?? TIER_LIMITS[DEFAULT_TIER])
       : { maxCustomers: null, maxMonthlyBookings: null },
     pudoApiKey,

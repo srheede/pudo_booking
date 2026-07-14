@@ -48,6 +48,10 @@ name: Build macOS Executable
 #   PUBLIC_FIREBASE_MESSAGING_SENDER_ID — Public project sender ID
 #   PUBLIC_FIREBASE_APP_ID             — Public project app ID
 #   PUBLIC_FIREBASE_MEASUREMENT_ID     — Public project measurement ID (optional)
+#   Also required so privileged emails can open the private side of the app:
+#   INTERNAL_EMAILS                    — Comma-separated emails (e.g. you@example.com)
+#   PUDO_API_KEY                       — Baked key used when those emails sign in
+#   FIREBASE_*                         — Internal Firebase credentials (as INTERNAL_FIREBASE)
 #
 # FIREBASE_SERVICE_ACCOUNT_JSON (PUBLIC builds only)
 #   This is NOT the same as the Firebase web config (apiKey, appId, …).
@@ -108,6 +112,7 @@ jobs:
           SECRET_PUBLIC_FIREBASE_APP_ID: ${{ secrets.PUBLIC_FIREBASE_APP_ID }}
           SECRET_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           SECRET_PUDO_API_KEY: ${{ secrets.PUDO_API_KEY }}
+          SECRET_INTERNAL_EMAILS: ${{ secrets.INTERNAL_EMAILS }}
           SECRET_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           SECRET_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           SECRET_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -126,6 +131,14 @@ jobs:
             [ -z "$SECRET_PUBLIC_FIREBASE_MESSAGING_SENDER_ID" ] && missing="$missing PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
             [ -z "$SECRET_PUBLIC_FIREBASE_APP_ID" ]              && missing="$missing PUBLIC_FIREBASE_APP_ID"
             [ -z "$SECRET_FIREBASE_SERVICE_ACCOUNT_JSON" ]       && missing="$missing FIREBASE_SERVICE_ACCOUNT_JSON"
+            # Private-email override: also need internal Firebase + emails + PUDO key
+            [ -z "$SECRET_INTERNAL_EMAILS" ]               && missing="$missing INTERNAL_EMAILS"
+            [ -z "$SECRET_PUDO_API_KEY" ]                   && missing="$missing PUDO_API_KEY"
+            [ -z "$SECRET_FIREBASE_API_KEY" ]               && missing="$missing FIREBASE_API_KEY"
+            [ -z "$SECRET_FIREBASE_AUTH_DOMAIN" ]           && missing="$missing FIREBASE_AUTH_DOMAIN"
+            [ -z "$SECRET_FIREBASE_PROJECT_ID" ]            && missing="$missing FIREBASE_PROJECT_ID"
+            [ -z "$SECRET_FIREBASE_MESSAGING_SENDER_ID" ]   && missing="$missing FIREBASE_MESSAGING_SENDER_ID"
+            [ -z "$SECRET_FIREBASE_APP_ID" ]                && missing="$missing FIREBASE_APP_ID"
           else
             # ── Internal mode: require PUDO_API_KEY + FIREBASE_* credentials ─
             [ -z "$SECRET_PUDO_API_KEY" ]               && missing="$missing PUDO_API_KEY"
@@ -147,9 +160,10 @@ jobs:
         env:
           CFG_PUBLIC_MODE: ${{ secrets.PUBLIC_MODE }}
           CFG_PUDO_API_KEY: ${{ secrets.PUDO_API_KEY }}
+          CFG_INTERNAL_EMAILS: ${{ secrets.INTERNAL_EMAILS }}
           CFG_API_BASE_URL: ${{ secrets.API_BASE_URL }}
           CFG_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          # Internal Firebase credentials (used when PUBLIC_MODE=false)
+          # Internal Firebase credentials (used when PUBLIC_MODE=false, or as INTERNAL_FIREBASE override)
           CFG_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           CFG_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           CFG_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -171,6 +185,21 @@ jobs:
             const e = process.env;
             const isPublic = e.CFG_PUBLIC_MODE === 'true';
 
+            const stripEmpty = (obj) => {
+              Object.keys(obj).forEach(k => { if (!obj[k]) delete obj[k]; });
+              return obj;
+            };
+
+            const buildInternalFirebase = () => stripEmpty({
+              apiKey:            e.CFG_FIREBASE_API_KEY,
+              authDomain:        e.CFG_FIREBASE_AUTH_DOMAIN,
+              projectId:         e.CFG_FIREBASE_PROJECT_ID,
+              storageBucket:     e.CFG_FIREBASE_STORAGE_BUCKET,
+              messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
+              appId:             e.CFG_FIREBASE_APP_ID,
+              measurementId:     e.CFG_FIREBASE_MEASUREMENT_ID,
+            });
+
             // Select the correct Firebase config based on build mode.
             // PUBLIC_MODE=true  → PUBLIC_FIREBASE_* secrets (pudo-booking-pub project)
             // PUBLIC_MODE=false → FIREBASE_* secrets        (internal project)
@@ -190,29 +219,31 @@ jobs:
                 firebase.databaseId = e.CFG_PUBLIC_FIREBASE_DATABASE_ID;
               }
             } else {
-              firebase = {
-                apiKey:            e.CFG_FIREBASE_API_KEY,
-                authDomain:        e.CFG_FIREBASE_AUTH_DOMAIN,
-                projectId:         e.CFG_FIREBASE_PROJECT_ID,
-                storageBucket:     e.CFG_FIREBASE_STORAGE_BUCKET,
-                messagingSenderId: e.CFG_FIREBASE_MESSAGING_SENDER_ID,
-                appId:             e.CFG_FIREBASE_APP_ID,
-                measurementId:     e.CFG_FIREBASE_MEASUREMENT_ID,
-              };
+              firebase = buildInternalFirebase();
               // Internal project uses the '(default)' Firestore database — no databaseId needed.
             }
 
-            // Strip undefined/empty values so config.json stays clean.
-            Object.keys(firebase).forEach(k => { if (!firebase[k]) delete firebase[k]; });
+            stripEmpty(firebase);
+
+            const internalEmails = (e.CFG_INTERNAL_EMAILS || '')
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean);
 
             const config = {
               PUBLIC_MODE: isPublic,
-              // PUBLIC_MODE=false: PUDO key baked in. PUBLIC_MODE=true: users supply their own key via Firebase profile.
-              PUDO_API_KEY: isPublic ? '' : e.CFG_PUDO_API_KEY,
+              // Always bake the key: internal builds use it for everyone;
+              // public builds use it only for INTERNAL_EMAILS private sessions.
+              PUDO_API_KEY: e.CFG_PUDO_API_KEY || '',
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
+              INTERNAL_EMAILS: internalEmails,
               FIREBASE: firebase,
             };
+
+            if (isPublic) {
+              config.INTERNAL_FIREBASE = buildInternalFirebase();
+            }
 
             require('fs').writeFileSync('config.json', JSON.stringify(config, null, 2));
             console.log('config.json written:');
@@ -220,6 +251,8 @@ jobs:
             console.log('  Firebase project:', firebase.projectId);
             console.log('  Firebase database:', firebase.databaseId || '(default)');
             console.log('  PUDO key present:', !!config.PUDO_API_KEY);
+            console.log('  INTERNAL_EMAILS:', config.INTERNAL_EMAILS.length);
+            console.log('  INTERNAL_FIREBASE:', !!config.INTERNAL_FIREBASE);
           "
 
       - name: Generate app icons

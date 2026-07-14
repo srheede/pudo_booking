@@ -7,7 +7,7 @@
  *
  * ── Data layout per build mode ────────────────────────────────────────────────
  *
- *  PUBLIC_MODE = false  (INTERNAL build)
+ *  INTERNAL session (PUBLIC_MODE=false build, or privileged email in a public build)
  *    • Data lives in flat, shared root collections:
  *        /customers/{id}
  *        /bookings/{id}
@@ -15,7 +15,7 @@
  *    • All authenticated users share the same data set (single-user dev tool).
  *    • The users/{uid} document is never read or written.
  *
- *  PUBLIC_MODE = true  (PUBLIC / SUBSCRIPTION build)
+ *  PUBLIC session (PUBLIC_MODE=true, non-privileged email)
  *    • Data lives under each user's sub-collections:
  *        /users/{uid}/customers/{id}
  *        /users/{uid}/bookings/{id}
@@ -31,7 +31,7 @@
  *      The only field this app ever writes is pudoApiKey (via savePudoApiKey).
  *
  * getCollectionRef / getDocRef transparently return the correct path for the
- * active build mode, so service methods work identically in both modes.
+ * active session mode, so service methods work identically in both modes.
  */
 
 import {
@@ -55,22 +55,34 @@ import {
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { db, auth } from "./config";
+import {
+  db,
+  auth,
+  isInternalSession,
+  hasInternalFirebase,
+  isInternalEmail,
+  activateInternalMode,
+  activatePublicMode,
+  getInternalAuth,
+  getPrimaryAuth,
+} from "./config";
 import config from "../../config.json";
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
-// PUBLIC_MODE=true  → /users/{uid}/{collection}  (per-user sub-collections)
-// PUBLIC_MODE=false → /{collection}              (shared root collections)
+// Public session → /users/{uid}/{collection}  (per-user sub-collections)
+// Internal session → /{collection}            (shared root collections)
+
+const usePublicPaths = () => config.PUBLIC_MODE && !isInternalSession;
 
 const getCollectionRef = (uid, collectionName) => {
-  if (config.PUBLIC_MODE && uid) {
+  if (usePublicPaths() && uid) {
     return collection(db, "users", uid, collectionName);
   }
   return collection(db, collectionName);
 };
 
 const getDocRef = (uid, collectionName, docId) => {
-  if (config.PUBLIC_MODE && uid) {
+  if (usePublicPaths() && uid) {
     return doc(db, "users", uid, collectionName, docId);
   }
   return doc(db, collectionName, docId);
@@ -79,20 +91,54 @@ const getDocRef = (uid, collectionName, docId) => {
 // ── Authentication ─────────────────────────────────────────────────────────────
 // Used in both modes.  Firebase Auth provides the login/logout flow regardless
 // of PUBLIC_MODE; in internal mode it simply gates access to the developer.
+// In public builds with INTERNAL_FIREBASE, privileged emails authenticate
+// against the internal project instead.
 
 export const authService = {
   async signUp(email, password) {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    if (config.PUBLIC_MODE && isInternalEmail(email) && hasInternalFirebase()) {
+      const err = new Error(
+        "This email is reserved for the private account. Please sign in instead."
+      );
+      err.code = "auth/email-already-in-use";
+      throw err;
+    }
+    activatePublicMode();
+    const userCredential = await createUserWithEmailAndPassword(
+      getPrimaryAuth(),
+      email,
+      password
+    );
     return userCredential.user;
   },
 
   async signIn(email, password) {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    if (config.PUBLIC_MODE && isInternalEmail(email) && hasInternalFirebase()) {
+      activateInternalMode();
+      const userCredential = await signInWithEmailAndPassword(
+        getInternalAuth(),
+        email,
+        password
+      );
+      return userCredential.user;
+    }
+    activatePublicMode();
+    const userCredential = await signInWithEmailAndPassword(
+      getPrimaryAuth(),
+      email,
+      password
+    );
     return userCredential.user;
   },
 
   async signOut() {
-    await signOut(auth);
+    const primary = getPrimaryAuth();
+    const internal = getInternalAuth();
+    const tasks = [];
+    if (primary?.currentUser) tasks.push(signOut(primary));
+    if (internal?.currentUser) tasks.push(signOut(internal));
+    await Promise.all(tasks);
+    activatePublicMode();
   },
 
   getCurrentUser() {
@@ -100,7 +146,43 @@ export const authService = {
   },
 
   onAuthStateChanged(callback) {
-    return onAuthStateChanged(auth, callback);
+    if (!hasInternalFirebase()) {
+      return onAuthStateChanged(getPrimaryAuth(), callback);
+    }
+
+    const primary = getPrimaryAuth();
+    const internal = getInternalAuth();
+    let lastKey = undefined;
+
+    const emit = (user, useInternal) => {
+      const key = user ? `${useInternal ? "i" : "p"}:${user.uid}` : "null";
+      if (key === lastKey) return;
+      lastKey = key;
+      if (user) {
+        if (useInternal) activateInternalMode();
+        else activatePublicMode();
+      } else {
+        activatePublicMode();
+      }
+      callback(user);
+    };
+
+    const unsubInternal = onAuthStateChanged(internal, (user) => {
+      if (user) emit(user, true);
+      else if (!primary.currentUser) emit(null, false);
+    });
+
+    const unsubPrimary = onAuthStateChanged(primary, (user) => {
+      // Prefer an active internal session if both somehow exist.
+      if (internal.currentUser) return;
+      if (user) emit(user, false);
+      else emit(null, false);
+    });
+
+    return () => {
+      unsubInternal();
+      unsubPrimary();
+    };
   },
 };
 

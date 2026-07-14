@@ -9,16 +9,15 @@ const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
 const STICKER_BASE_URL = "https://api-pudo.co.za/generate/sticker";
 
 /**
- * In PUBLIC_MODE the renderer sends the user's PUDO API key via IPC after
- * login.  In internal mode we use the key baked into config.json.
+ * The renderer sends the active PUDO API key via IPC after login.
+ * Public subscribers send their profile key; privileged private sessions
+ * (and pure internal builds) send the baked config.PUDO_API_KEY.
+ * Fall back to the baked key so internal builds still work without IPC.
  */
 let runtimePudoApiKey = null;
 
 const getPudoApiKey = () => {
-  if (config.PUBLIC_MODE) {
-    return runtimePudoApiKey ?? "";
-  }
-  return config.PUDO_API_KEY ?? "";
+  return runtimePudoApiKey ?? config.PUDO_API_KEY ?? "";
 };
 
 const getAuthHeaders = () => ({
