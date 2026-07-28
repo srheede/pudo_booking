@@ -2,9 +2,11 @@
  * Lightweight Crashlytics-style error reporting for this Electron app.
  *
  * Firebase Crashlytics does not officially support Electron/desktop, so errors
- * are written to Firestore where they can be inspected in the Firebase Console:
- *   • Public sessions  → /users/{uid}/crashReports/{id}
- *   • Internal sessions → /crashReports/{id}
+ * are written to a single central Firestore collection:
+ *   /crashReports/{id}
+ *
+ * Each document includes userId / userEmail so you can filter by user in the
+ * Firebase Console without opening each user document.
  *
  * Also mirrors critical errors to the Electron main process via IPC so they
  * appear in main-process logs on the user's machine.
@@ -61,12 +63,9 @@ const buildReport = (error, context = {}) => ({
 
 const persistReport = async (report) => {
   try {
-    const useUserPath =
-      config.PUBLIC_MODE && currentUserId && !isInternalSession;
-    const col = useUserPath
-      ? collection(db, "users", currentUserId, "crashReports")
-      : collection(db, "crashReports");
-    await addDoc(col, report);
+    // Always write to the shared root collection so all errors are visible
+    // in one Firebase Console place (filter by userEmail / platform as needed).
+    await addDoc(collection(db, "crashReports"), report);
   } catch (err) {
     // Never let reporting itself break the app.
     console.error("[Crashlytics] Failed to persist report:", err);
@@ -80,6 +79,7 @@ const persistReport = async (report) => {
         name: report.name,
         context: report.context,
         userId: report.userId,
+        userEmail: report.userEmail,
         clientTime: report.clientTime,
       });
     }
