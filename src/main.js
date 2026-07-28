@@ -1,11 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell, globalShortcut } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, net } = require("electron");
 const path = require("path");
-const axios = require("axios");
 const fs = require("fs");
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../config.json"), "utf8"));
 const { PDFDocument } = require("pdf-lib");
 
-const WAYBILL_BASE_URL = "https://api-pudo.co.za/generate/waybill";
 const STICKER_BASE_URL = "https://api-pudo.co.za/generate/sticker";
 
 /**
@@ -25,6 +23,44 @@ const getAuthHeaders = () => ({
   "Content-Type": "application/json",
   Accept: "application/json",
 });
+
+/**
+ * Use Electron's Chromium network stack (net.fetch) instead of Node/axios.
+ * Node's TLS stack often fails on Windows with corporate AV, SSL inspection,
+ * or system proxy settings that Chromium (and thus Firebase in the renderer)
+ * already handles correctly — which is why Mac can work while Windows does not.
+ */
+async function pudoFetch(url, { method = "GET", headers = {}, body, responseType = "json" } = {}) {
+  const response = await net.fetch(url, {
+    method,
+    headers,
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 500);
+    } catch {
+      // ignore body read failures
+    }
+    throw new Error(
+      `PUDO API ${method} ${url} failed (${response.status})${detail ? `: ${detail}` : ""}`
+    );
+  }
+
+  if (responseType === "arraybuffer") {
+    return response.arrayBuffer();
+  }
+  return response.json();
+}
+
+/** Axios/Node errors contain non-cloneable fields; only plain Error crosses IPC. */
+function throwIpcError(error, fallbackMessage) {
+  const message = error?.message || fallbackMessage || "PUDO API request failed";
+  console.error(fallbackMessage || "PUDO API error:", message);
+  throw new Error(message);
+}
 
 let mainWindow;
 
@@ -121,10 +157,9 @@ ipcMain.handle("get-public-mode", () => {
 
 ipcMain.handle("search-terminals", async (event, query) => {
   try {
-    const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
+    let lockers = await pudoFetch(`${config.API_BASE_URL}/lockers-data`, {
       headers: getAuthHeaders(),
     });
-    let lockers = response.data;
     if (query && query.trim().length > 0) {
       const searchTerm = query.toLowerCase();
       lockers = lockers.filter(
@@ -136,87 +171,73 @@ ipcMain.handle("search-terminals", async (event, query) => {
     }
     return lockers;
   } catch (error) {
-    console.error("Error searching terminals:", error);
-    throw error;
+    throwIpcError(error, "Error searching terminals");
   }
 });
 
 ipcMain.handle("create-shipment", async (event, payload) => {
   try {
-    const response = await axios.post(
-      `${config.API_BASE_URL}/shipments`,
-      payload,
-      { headers: getAuthHeaders() }
-    );
-    return response.data;
+    return await pudoFetch(`${config.API_BASE_URL}/shipments`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: payload,
+    });
   } catch (error) {
-    console.error("Error creating shipment:", error);
-    throw error;
+    throwIpcError(error, "Error creating shipment");
   }
 });
 
 ipcMain.handle("get-all-terminals", async () => {
   try {
-    const response = await axios.get(`${config.API_BASE_URL}/lockers-data`, {
+    return await pudoFetch(`${config.API_BASE_URL}/lockers-data`, {
       headers: getAuthHeaders(),
     });
-    return response.data;
   } catch (error) {
-    console.error("Error getting terminals:", error);
-    throw error;
+    throwIpcError(error, "Error getting terminals");
   }
 });
 
 ipcMain.handle("get-all-shipments", async () => {
   try {
-    const response = await axios.get(`${config.API_BASE_URL}/shipments`, {
+    return await pudoFetch(`${config.API_BASE_URL}/shipments`, {
       headers: getAuthHeaders(),
     });
-    return response.data;
   } catch (error) {
-    console.error("Error getting all shipments:", error);
-    throw error;
+    throwIpcError(error, "Error getting all shipments");
   }
 });
 
 ipcMain.handle("get-shipment", async (event, shipmentId) => {
   try {
-    const response = await axios.get(
-      `${config.API_BASE_URL}/shipments/${shipmentId}`,
-      { headers: getAuthHeaders() }
-    );
-    return response.data;
+    return await pudoFetch(`${config.API_BASE_URL}/shipments/${shipmentId}`, {
+      headers: getAuthHeaders(),
+    });
   } catch (error) {
-    console.error("Error getting shipment:", error);
-    throw error;
+    throwIpcError(error, "Error getting shipment");
   }
 });
 
 ipcMain.handle("update-shipment", async (event, { shipmentId, payload }) => {
   try {
-    const response = await axios.put(
-      `${config.API_BASE_URL}/shipments/${shipmentId}`,
-      payload,
-      { headers: getAuthHeaders() }
-    );
-    return response.data;
+    return await pudoFetch(`${config.API_BASE_URL}/shipments/${shipmentId}`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: payload,
+    });
   } catch (error) {
-    console.error("Error updating shipment:", error);
-    throw error;
+    throwIpcError(error, "Error updating shipment");
   }
 });
 
 ipcMain.handle("cancel-shipment", async (event, shipmentId) => {
   try {
-    const response = await axios.put(
-      `${config.API_BASE_URL}/shipments/${shipmentId}`,
-      { status: "cancelled" },
-      { headers: getAuthHeaders() }
-    );
-    return response.data;
+    return await pudoFetch(`${config.API_BASE_URL}/shipments/${shipmentId}`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: { status: "cancelled" },
+    });
   } catch (error) {
-    console.error("Error cancelling shipment:", error);
-    throw error;
+    throwIpcError(error, "Error cancelling shipment");
   }
 });
 
@@ -265,14 +286,11 @@ async function combineWaybillPdfs(pdfBuffers) {
 ipcMain.handle("download-waybills-combined", async (event, shipments) => {
   try {
     const pdfBuffers = await Promise.all(
-      shipments.map(({ shipmentId }) =>
-        axios
-          .get(`${STICKER_BASE_URL}/${shipmentId}`, {
-            params: { api_key: getPudoApiKey() },
-            responseType: "arraybuffer",
-          })
-          .then((r) => r.data)
-      )
+      shipments.map(async ({ shipmentId }) => {
+        const url = `${STICKER_BASE_URL}/${shipmentId}?api_key=${encodeURIComponent(getPudoApiKey())}`;
+        const buffer = await pudoFetch(url, { responseType: "arraybuffer" });
+        return Buffer.from(buffer);
+      })
     );
 
     const combinedPdf = await combineWaybillPdfs(pdfBuffers);
@@ -289,7 +307,6 @@ ipcMain.handle("download-waybills-combined", async (event, shipments) => {
 
     return { success: true, filepath, filename };
   } catch (error) {
-    console.error("Error downloading waybills:", error);
-    throw error;
+    throwIpcError(error, "Error downloading waybills");
   }
 });
