@@ -367,7 +367,9 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
                   />
                 </Grid>
 
-                {showAddressDetails || manualAddressMode || formData.deliveryType === "address" ? (
+                {(showAddressDetails ||
+                  manualAddressMode ||
+                  formData.deliveryType === "address") && (
                   <>
                     <Grid item xs={12}>
                       <Typography
