@@ -433,7 +433,10 @@ const SenderPage = () => {
                       value={formData.address.province}
                       onChange={handleChange("address.province")}
                       error={!!errors["address.province"]}
-                      helperText={errors["address.province"]}
+                      helperText={
+                        errors["address.province"] ||
+                        "Use code: GP, WC, EC, KZN, FS, LP, MP, NW, or NC"
+                      }
                       required
                     />
                   </Grid>

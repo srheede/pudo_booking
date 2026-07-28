@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Typography, Button, Paper } from "@mui/material";
 import { ErrorOutline } from "@mui/icons-material";
+import { crashlytics } from "../firebase/crashlytics";
 
 /**
  * Catches unhandled React render errors and displays them instead of a blank
@@ -18,6 +19,10 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error("React render error caught by ErrorBoundary:", error, info);
+    crashlytics.recordError(error, {
+      source: "react-error-boundary",
+      componentStack: info?.componentStack?.slice(0, 4000),
+    });
   }
 
   render() {

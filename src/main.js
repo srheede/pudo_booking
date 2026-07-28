@@ -113,16 +113,22 @@ app.whenReady().then(() => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
+        // Google Places Autocomplete loads extra scripts/workers from maps.gstatic.com.
+        // Without those hosts (and 'unsafe-eval' for the Maps JS API), door-address
+        // entry fails in packaged Electron — especially noticeable on Windows —
+        // while locker bookings (no Maps) keep working.
         "Content-Security-Policy": [
           "default-src 'self';" +
           // 'unsafe-inline' is needed in dev for Vite's React Fast Refresh inline script.
+          // 'unsafe-eval' is required by the Google Maps JavaScript API.
           (isDev
-            ? " script-src 'self' 'unsafe-inline' https://maps.googleapis.com;"
-            : " script-src 'self' https://maps.googleapis.com;") +
-          " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;" +
+            ? " script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com;"
+            : " script-src 'self' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com;") +
+          " style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://maps.googleapis.com https://maps.gstatic.com;" +
           " font-src 'self' https://fonts.gstatic.com;" +
-          " img-src 'self' data: https:;" +
-          " connect-src 'self' https://api-pudo.co.za https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google.com wss://*.firebaseio.com;",
+          " img-src 'self' data: blob: https:;" +
+          " worker-src 'self' blob:;" +
+          " connect-src 'self' https://api-pudo.co.za https://*.googleapis.com https://maps.googleapis.com https://maps.gstatic.com https://places.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google.com wss://*.firebaseio.com;",
         ],
       },
     });
@@ -151,6 +157,20 @@ ipcMain.handle("set-pudo-api-key", (_, apiKey) => {
 
 ipcMain.handle("get-public-mode", () => {
   return config.PUBLIC_MODE === true;
+});
+
+// Renderer → main crash/error mirror (also printed so support can read main logs)
+ipcMain.handle("crashlytics-log", (_, report) => {
+  console.error("[Crashlytics]", JSON.stringify(report, null, 2));
+  return true;
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[Crashlytics] uncaughtException:", error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[Crashlytics] unhandledRejection:", reason);
 });
 
 // ─── Pudo API IPC Handlers ───────────────────────────────────────────────────

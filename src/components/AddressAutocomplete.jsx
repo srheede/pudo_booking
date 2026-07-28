@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { TextField, Box, Alert } from "@mui/material";
 import config from "../../config.json";
 
+const MAPS_SCRIPT_ID = "pudo-google-maps-places";
+
 const AddressAutocomplete = ({
   value,
   onChange,
@@ -27,62 +29,112 @@ const AddressAutocomplete = ({
       setLoadingError(
         "Google Maps API key not configured. Please contact support."
       );
-      return;
     }
   }, []);
 
-  // Helper function to check if Google Maps API is fully loaded
   const isGoogleMapsReady = () => {
     return (
       window.google &&
       window.google.maps &&
       window.google.maps.places &&
-      window.google.maps.places.Autocomplete &&
       typeof window.google.maps.places.Autocomplete === "function"
     );
   };
 
-  // Load Google Maps API if not already loaded
+  // Wait until Places is actually usable (Windows + AV can delay script init).
+  const waitForGoogleMaps = (timeoutMs = 15000) =>
+    new Promise((resolve, reject) => {
+      if (isGoogleMapsReady()) {
+        resolve();
+        return;
+      }
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (isGoogleMapsReady()) {
+          clearInterval(timer);
+          resolve();
+        } else if (Date.now() - started > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error("Timed out waiting for Google Maps Places API"));
+        }
+      }, 100);
+    });
+
+  // Load Google Maps Places — use the callback param (not loading=async) so
+  // Places is ready when onload/callback fires. Poll as a backup.
   useEffect(() => {
-    if (loadingError) return; // Don't load if already have an error
+    if (loadingError) return;
+
+    let cancelled = false;
+
+    const markReady = async () => {
+      try {
+        await waitForGoogleMaps();
+        if (!cancelled) {
+          setIsLoaded(true);
+          setLoadingError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadingError(
+            "Failed to load address suggestions. You can still enter the address manually below."
+          );
+          setIsLoaded(false);
+        }
+      }
+    };
 
     if (isGoogleMapsReady()) {
-      setIsLoaded(true);
-      return;
+      markReady();
+      return () => {
+        cancelled = true;
+      };
     }
 
-    if (!document.querySelector(`script[src*="maps.googleapis.com"]`)) {
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${config.GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`;
-      script.async = true;
-      script.defer = true;
-
-      script.onload = () => {
-        setTimeout(() => {
-          if (isGoogleMapsReady()) {
-            setIsLoaded(true);
-            setLoadingError(null);
-          }
-        }, 300);
+    const existing = document.getElementById(MAPS_SCRIPT_ID);
+    if (existing) {
+      markReady();
+      return () => {
+        cancelled = true;
       };
+    }
 
-      script.onerror = () => {
+    window.__pudoInitGoogleMaps = () => {
+      markReady();
+    };
+
+    const script = document.createElement("script");
+    script.id = MAPS_SCRIPT_ID;
+    script.src =
+      `https://maps.googleapis.com/maps/api/js` +
+      `?key=${encodeURIComponent(config.GOOGLE_MAPS_API_KEY)}` +
+      `&libraries=places&callback=__pudoInitGoogleMaps`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => {
+      if (!cancelled) {
         setLoadingError(
-          "Failed to load address suggestions. Please check your internet connection and API key."
+          "Failed to load address suggestions. Please check your internet connection, then use manual address entry."
         );
         setIsLoaded(false);
-      };
+      }
+    };
+    document.head.appendChild(script);
 
-      document.head.appendChild(script);
-    }
+    // Backup poll in case callback is blocked by CSP/referrer quirks.
+    markReady();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadingError]);
 
-  // Add CSS to ensure autocomplete dropdown is visible
+  // Keep the Places dropdown above MUI dialogs
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
       .pac-container {
-        z-index: 9999 !important;
+        z-index: 10000 !important;
         background-color: white !important;
         border: 1px solid #ccc !important;
         border-radius: 4px !important;
@@ -101,7 +153,6 @@ const AddressAutocomplete = ({
       }
     `;
     document.head.appendChild(style);
-
     return () => {
       if (document.head.contains(style)) {
         document.head.removeChild(style);
@@ -122,11 +173,16 @@ const AddressAutocomplete = ({
             inputElementRef.current,
             {
               types: ["address"],
-              componentRestrictions: { country: "za" }, // Restrict to South Africa
+              componentRestrictions: { country: "za" },
+              fields: [
+                "address_components",
+                "formatted_address",
+                "geometry",
+                "name",
+              ],
             }
           );
 
-          // Set up place selection handler
           autocompleteRef.current.addListener("place_changed", () => {
             try {
               const place = autocompleteRef.current.getPlace();
@@ -135,7 +191,6 @@ const AddressAutocomplete = ({
                 const addressComponents = place.address_components || [];
                 const formattedAddress = place.formatted_address || "";
 
-                // Parse address components
                 const addressData = {
                   street: "",
                   suburb: "",
@@ -147,7 +202,6 @@ const AddressAutocomplete = ({
                   lng: place.geometry.location.lng(),
                 };
 
-                // Map Google Places API components to our address structure
                 addressComponents.forEach((component) => {
                   const types = component.types;
 
@@ -159,23 +213,21 @@ const AddressAutocomplete = ({
                       addressData.street + component.long_name;
                   } else if (
                     types.includes("sublocality_level_1") ||
+                    types.includes("sublocality") ||
                     types.includes("neighborhood")
                   ) {
                     addressData.suburb = component.long_name;
                   } else if (types.includes("locality")) {
                     addressData.city = component.long_name;
                   } else if (types.includes("administrative_area_level_1")) {
-                    // Use short_name to get zone abbreviation (e.g. "GP" not "Gauteng")
                     addressData.province = component.short_name;
                   } else if (types.includes("postal_code")) {
                     addressData.postalCode = component.long_name;
                   }
                 });
 
-                // Clean up street address
                 addressData.street = addressData.street.trim();
 
-                // If no specific suburb found, try to extract from formatted address
                 if (!addressData.suburb && formattedAddress) {
                   const parts = formattedAddress.split(",");
                   if (parts.length > 2) {
@@ -188,48 +240,37 @@ const AddressAutocomplete = ({
                 setApiError(null);
               } else {
                 setApiError(
-                  "No address details found. Please try selecting a different address."
+                  "No address details found. Please try selecting a different address, or enter it manually."
                 );
               }
             } catch (error) {
               setApiError(
-                "Error processing the selected address. Please try again."
+                "Error processing the selected address. Please try again or enter it manually."
               );
             }
           });
 
-          retryAttempts.current = 0; // Reset retry attempts on success
+          retryAttempts.current = 0;
         } catch (error) {
-          // Retry logic for timing issues
-          if (retryAttempts.current < 3) {
+          if (retryAttempts.current < 5) {
             retryAttempts.current++;
             setTimeout(() => {
               initializeAutocomplete();
-            }, 1000 * retryAttempts.current);
+            }, 500 * retryAttempts.current);
             return;
           }
 
-          // Provide specific error messages after retries fail
           if (error.message && error.message.includes("API key")) {
             setApiError("Invalid Google Maps API key. Please contact support.");
           } else if (error.message && error.message.includes("quota")) {
             setApiError(
               "Address search quota exceeded. Please try again later."
             );
-          } else if (
-            error.message &&
-            error.message.includes("not properly loaded")
-          ) {
-            setApiError(
-              "Google Maps API failed to initialize. Please refresh the page."
-            );
           } else {
             setApiError(
-              "Address search initialization failed. Please try refreshing the page."
+              "Address search unavailable. Please use manual address entry."
             );
           }
-
-          setIsLoaded(false);
         }
       };
 
@@ -237,7 +278,6 @@ const AddressAutocomplete = ({
     }
   }, [isLoaded, onChange]);
 
-  // Update input value when value prop changes
   useEffect(() => {
     if (value && typeof value === "object" && value.fullAddress) {
       setInputValue(value.fullAddress);
@@ -246,25 +286,20 @@ const AddressAutocomplete = ({
     }
   }, [value]);
 
-  // Handle input changes
   const handleInputChange = (event) => {
     const newValue = event.target.value;
     setInputValue(newValue);
-
-    // Clear API errors when user starts typing
     if (apiError) {
       setApiError(null);
     }
   };
 
   const handleKeyDown = (event) => {
-    // Prevent form submission when pressing Enter in autocomplete
     if (event.key === "Enter") {
       event.preventDefault();
     }
   };
 
-  // Determine what to display as helper text
   const getHelperText = () => {
     if (helperText) return helperText;
     if (loadingError) return loadingError;
@@ -273,7 +308,6 @@ const AddressAutocomplete = ({
     return "";
   };
 
-  // Determine if there's an error to show - ensure it's always a boolean
   const hasError = Boolean(error || loadingError || apiError);
 
   return (
@@ -289,20 +323,20 @@ const AddressAutocomplete = ({
         helperText={getHelperText()}
         required={required}
         placeholder="Start typing an address..."
-        disabled={!isLoaded || !!loadingError}
+        // Keep the field usable even if Maps fails — manual entry is the fallback.
+        disabled={false}
         autoComplete="off"
       />
 
-      {/* Show detailed error alerts for better UX */}
       {loadingError && (
-        <Alert severity="error" sx={{ mt: 1 }}>
-          <strong>Configuration Error:</strong> {loadingError}
+        <Alert severity="warning" sx={{ mt: 1 }}>
+          {loadingError}
         </Alert>
       )}
 
       {apiError && (
         <Alert severity="warning" sx={{ mt: 1 }}>
-          <strong>Address Search Error:</strong> {apiError}
+          {apiError}
         </Alert>
       )}
     </Box>

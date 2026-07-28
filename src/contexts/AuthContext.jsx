@@ -28,6 +28,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { authService, userProfileService } from "../firebase/services";
 import { isInternalSession } from "../firebase/config";
+import { crashlytics } from "../firebase/crashlytics";
 import config from "../../config.json";
 
 const AuthContext = createContext();
@@ -134,10 +135,11 @@ export const AuthProvider = ({ children }) => {
       await notifyMainProcessApiKey(key);
     }
     setPudoApiKey(key);
+    crashlytics.setUser(firebaseUser);
   }, []);
 
   // Internal / private session: skip subscription, use baked PUDO key.
-  const activateInternalSession = useCallback(async () => {
+  const activateInternalSession = useCallback(async (firebaseUser) => {
     setPublicMode(false);
     setSubscriptionValid(true);
     setSubscriptionTier(DEFAULT_TIER);
@@ -147,6 +149,7 @@ export const AuthProvider = ({ children }) => {
       await notifyMainProcessApiKey(key);
     }
     setPudoApiKey(key);
+    if (firebaseUser) crashlytics.setUser(firebaseUser);
   }, []);
 
   // ── Auth state listener ─────────────────────────────────────────────────────
@@ -160,7 +163,7 @@ export const AuthProvider = ({ children }) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         if (isInternalSession || !config.PUBLIC_MODE) {
-          await activateInternalSession();
+          await activateInternalSession(firebaseUser);
         } else {
           setPublicMode(true);
           await loadUserProfile(firebaseUser);
@@ -171,6 +174,7 @@ export const AuthProvider = ({ children }) => {
         setSubscriptionValid(false);
         setPudoApiKey(null);
         setUserProfile(undefined);
+        crashlytics.clearUser();
         await notifyMainProcessApiKey(null);
       }
       setLoading(false);
@@ -214,6 +218,7 @@ export const AuthProvider = ({ children }) => {
     setSubscriptionValid(false);
     setSubscriptionTier(DEFAULT_TIER);
     setPudoApiKey(null);
+    crashlytics.clearUser();
     await notifyMainProcessApiKey(null);
   };
 

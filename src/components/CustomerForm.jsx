@@ -367,7 +367,7 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
                   />
                 </Grid>
 
-                {showAddressDetails && (
+                {showAddressDetails || manualAddressMode || formData.deliveryType === "address" ? (
                   <>
                     <Grid item xs={12}>
                       <Typography
@@ -415,7 +415,10 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
                         value={formData.address.province}
                         onChange={handleChange("address.province")}
                         error={!!errors["address.province"]}
-                        helperText={errors["address.province"]}
+                        helperText={
+                          errors["address.province"] ||
+                          "Use code: GP, WC, EC, KZN, FS, LP, MP, NW, or NC"
+                        }
                         required
                       />
                     </Grid>

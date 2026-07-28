@@ -27,6 +27,7 @@ import {
   bookingService,
   senderService,
 } from "../firebase/services";
+import { crashlytics } from "../firebase/crashlytics";
 import { useAuth } from "../contexts/AuthContext";
 import {
   clearLockersCache,
@@ -66,23 +67,40 @@ const getServiceCode = (senderType, customerType, size) => {
   return `${from}2${to}${size} - ECO`;
 };
 
-// Maps full province names stored by older records to abbreviated zone codes.
-// New records from Google Places already store the short_name abbreviation.
+// Maps full province names stored by older/manual records to PUDO zone codes.
+// Google Places stores short_name abbreviations (e.g. "GP").
 const PROVINCE_TO_ZONE = {
-  Gauteng: "GP",
-  "Western Cape": "WC",
-  "Eastern Cape": "EC",
-  "KwaZulu-Natal": "KZN",
-  "Free State": "FS",
-  Limpopo: "LP",
-  Mpumalanga: "MP",
-  "North West": "NW",
-  "Northern Cape": "NC",
+  gauteng: "GP",
+  "western cape": "WC",
+  "eastern cape": "EC",
+  "kwazulu-natal": "KZN",
+  "free state": "FS",
+  limpopo: "LP",
+  mpumalanga: "MP",
+  "north west": "NW",
+  "northern cape": "NC",
+  gp: "GP",
+  wc: "WC",
+  ec: "EC",
+  kzn: "KZN",
+  fs: "FS",
+  lp: "LP",
+  mp: "MP",
+  nw: "NW",
+  nc: "NC",
 };
 
 const toZoneCode = (province) => {
   if (!province) return "";
-  return PROVINCE_TO_ZONE[province] || province;
+  const key = String(province).trim().toLowerCase();
+  return PROVINCE_TO_ZONE[key] || String(province).trim().toUpperCase();
+};
+
+const validateDoorAddress = (address, label) => {
+  if (!address?.street?.trim()) return `${label}: street address is missing`;
+  if (!address?.city?.trim()) return `${label}: city is missing`;
+  if (!toZoneCode(address?.province)) return `${label}: province/zone is missing`;
+  return null;
 };
 
 const BookingsPage = () => {
@@ -260,6 +278,23 @@ const BookingsPage = () => {
         try {
           const size = customerSizes[customer.id] || defaultSize;
 
+          // Door/address destinations need a complete zone-capable address.
+          if (customer.deliveryType === "address") {
+            const doorError = validateDoorAddress(
+              customer.address,
+              customer.name
+            );
+            if (doorError) {
+              throw new Error(doorError);
+            }
+          }
+          if (sender.deliveryType === "address") {
+            const senderError = validateDoorAddress(sender.address, "Sender");
+            if (senderError) {
+              throw new Error(senderError);
+            }
+          }
+
           const buildAddressObject = (address) => ({
             street_address: address.street,
             local_area: address.suburb || "",
@@ -329,7 +364,10 @@ const BookingsPage = () => {
             });
 
             if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
+              const errBody = await response.text().catch(() => "");
+              throw new Error(
+                `HTTP ${response.status}${errBody ? `: ${errBody.slice(0, 300)}` : ""}`
+              );
             }
 
             shipmentResult = await response.json();
@@ -352,6 +390,18 @@ const BookingsPage = () => {
           });
         } catch (error) {
           console.error(`Error creating booking for ${customer.name}:`, error);
+          crashlytics.recordError(error, {
+            source: "create-booking",
+            customerId: customer.id,
+            customerName: customer.name,
+            deliveryType: customer.deliveryType,
+            senderType: sender?.deliveryType,
+            hasLat: customer.address?.lat != null,
+            hasLng: customer.address?.lng != null,
+            zone: customer.address?.province
+              ? toZoneCode(customer.address.province)
+              : null,
+          });
           results.push({
             customer: customer.name,
             success: false,
@@ -362,6 +412,7 @@ const BookingsPage = () => {
 
       const successCount = results.filter((r) => r.success).length;
       const failCount = results.filter((r) => !r.success).length;
+      const firstFailure = results.find((r) => !r.success);
 
       if (successCount > 0 && failCount === 0) {
         showSnackbar(
@@ -370,11 +421,18 @@ const BookingsPage = () => {
         );
       } else if (successCount > 0 && failCount > 0) {
         showSnackbar(
-          `Created ${successCount} booking(s), ${failCount} failed`,
+          `Created ${successCount} booking(s), ${failCount} failed${
+            firstFailure?.error ? `: ${firstFailure.error}` : ""
+          }`,
           "warning"
         );
       } else {
-        showSnackbar("All bookings failed to create", "error");
+        showSnackbar(
+          firstFailure?.error
+            ? `Booking failed: ${firstFailure.error}`
+            : "All bookings failed to create",
+          "error"
+        );
       }
 
       // Update monthly booking count
