@@ -55,17 +55,12 @@ const LOCKER_SIZES = [
 
 // Derives the correct PUDO service level code from both the sender (collection)
 // type and the customer (delivery) type.
-// Pattern: {C}2{D}{SIZE} - ECO  where C = L(ocker)|K(iosk), D = L|K|D(oor)
-const getServiceCode = (senderType, customerType, size) => {
-  const from = senderType === "kiosk" ? "K" : "L";
-  const to =
-    customerType === "kiosk"
-      ? "K"
-      : customerType === "locker"
-      ? "L"
-      : "D";
-  return `${from}2${to}${size} - ECO`;
-};
+// Pattern: {C}2{D}{SIZE} - ECO  where C/D = L(ocker)|K(iosk)|D(oor)
+const toServiceLetter = (type) =>
+  type === "kiosk" ? "K" : type === "address" ? "D" : "L";
+
+const getServiceCode = (senderType, customerType, size) =>
+  `${toServiceLetter(senderType)}2${toServiceLetter(customerType)}${size} - ECO`;
 
 // Maps full province names stored by older/manual records to PUDO zone codes.
 // Google Places stores short_name abbreviations (e.g. "GP").
@@ -101,6 +96,39 @@ const validateDoorAddress = (address, label) => {
   if (!address?.city?.trim()) return `${label}: city is missing`;
   if (!toZoneCode(address?.province)) return `${label}: province/zone is missing`;
   return null;
+};
+
+const hasCoords = (address) => {
+  if (address?.lat == null || address?.lng == null) return false;
+  if (address.lat === "" || address.lng === "") return false;
+  return Number.isFinite(Number(address.lat)) && Number.isFinite(Number(address.lng));
+};
+
+// PUDO cannot geocode door addresses when local_area is blank (common on
+// imported customers that have a city but no suburb). Fall back to city.
+const doorLocalArea = (address) =>
+  String(address?.suburb || address?.city || "").trim();
+
+const buildAddressObject = (address) => {
+  const localArea = doorLocalArea(address);
+  return {
+    street_address: address.street,
+    local_area: localArea,
+    suburb: localArea,
+    city: address.city,
+    zone: toZoneCode(address.province),
+    code: address.postalCode || "",
+    country: "South Africa",
+    entered_address:
+      address.fullAddress ||
+      `${address.street}, ${localArea}, ${address.city}, ${address.postalCode || ""}, South Africa`
+        .replace(/,\s*,/g, ",")
+        .replace(/^,\s*|,\s*$/g, ""),
+    type: "residential",
+    ...(hasCoords(address)
+      ? { lat: String(address.lat), lng: String(address.lng) }
+      : {}),
+  };
 };
 
 const BookingsPage = () => {
@@ -295,20 +323,6 @@ const BookingsPage = () => {
             }
           }
 
-          const buildAddressObject = (address) => ({
-            street_address: address.street,
-            local_area: address.suburb || "",
-            suburb: address.suburb || "",
-            city: address.city,
-            zone: toZoneCode(address.province),
-            code: address.postalCode || "",
-            country: "South Africa",
-            entered_address: address.fullAddress || `${address.street}, ${address.suburb || ""}, ${address.city}, ${address.postalCode || ""}, South Africa`.replace(/,\s*,/g, ","),
-            type: "residential",
-            ...(address.lat != null && { lat: String(address.lat) }),
-            ...(address.lng != null && { lng: String(address.lng) }),
-          });
-
           // Build collection address
           const collectionAddress =
             sender.deliveryType === "locker"
@@ -365,9 +379,16 @@ const BookingsPage = () => {
 
             if (!response.ok) {
               const errBody = await response.text().catch(() => "");
-              throw new Error(
-                `HTTP ${response.status}${errBody ? `: ${errBody.slice(0, 300)}` : ""}`
-              );
+              let message = `HTTP ${response.status}`;
+              if (errBody) {
+                try {
+                  const parsed = JSON.parse(errBody);
+                  message = parsed.message || `${message}: ${errBody.slice(0, 300)}`;
+                } catch {
+                  message = `${message}: ${errBody.slice(0, 300)}`;
+                }
+              }
+              throw new Error(message);
             }
 
             shipmentResult = await response.json();

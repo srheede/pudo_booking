@@ -44,9 +44,20 @@ async function pudoFetch(url, { method = "GET", headers = {}, body, responseType
     } catch {
       // ignore body read failures
     }
-    throw new Error(
-      `PUDO API ${method} ${url} failed (${response.status})${detail ? `: ${detail}` : ""}`
-    );
+    let message = `PUDO API ${method} ${url} failed (${response.status})`;
+    if (detail) {
+      try {
+        const parsed = JSON.parse(detail);
+        if (parsed?.message) {
+          message = parsed.message;
+        } else {
+          message = `${message}: ${detail}`;
+        }
+      } catch {
+        message = `${message}: ${detail}`;
+      }
+    }
+    throw new Error(message);
   }
 
   if (responseType === "arraybuffer") {
