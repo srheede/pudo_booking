@@ -18,6 +18,8 @@ import {
 import { Save } from "@mui/icons-material";
 import { senderService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
+import { analytics } from "../firebase/analytics";
+import { crashlytics } from "../firebase/crashlytics";
 import LockerAutocomplete from "../components/LockerAutocomplete.jsx";
 import KioskAutocomplete from "../components/KioskAutocomplete.jsx";
 import AddressAutocomplete from "../components/AddressAutocomplete.jsx";
@@ -233,9 +235,11 @@ const SenderPage = () => {
     try {
       setSaving(true);
       await senderService.update(user?.uid, formData);
+      analytics.event("sender_updated");
       showSnackbar("Sender details saved successfully");
     } catch (error) {
       console.error("Error saving sender data:", error);
+      crashlytics.recordError(error, { source: "save-sender" });
       showSnackbar("Error saving sender details", "error");
     } finally {
       setSaving(false);

@@ -20,6 +20,8 @@ import { Add, Edit, Delete, Search } from "@mui/icons-material";
 import config from "../../config.json";
 import { customerService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
+import { analytics } from "../firebase/analytics";
+import { crashlytics } from "../firebase/crashlytics";
 import CustomerForm from "../components/CustomerForm.jsx";
 import LockerAutocomplete, {
   clearLockersCache,
@@ -145,14 +147,17 @@ const CustomersPage = () => {
     try {
       if (selectedCustomer) {
         await customerService.update(user?.uid, selectedCustomer.id, customerData);
+        analytics.event("customer_updated");
         showSnackbar("Customer updated successfully");
       } else {
         await customerService.add(user?.uid, customerData);
+        analytics.event("customer_created");
         showSnackbar("Customer added successfully");
       }
       await loadCustomers();
     } catch (error) {
       console.error("Error saving customer:", error);
+      crashlytics.recordError(error, { source: "save-customer" });
       showSnackbar("Error saving customer", "error");
     }
   };
@@ -160,10 +165,12 @@ const CustomersPage = () => {
   const confirmDelete = async () => {
     try {
       await customerService.delete(user?.uid, customerToDelete.id);
+      analytics.event("customer_deleted");
       showSnackbar("Customer deleted successfully");
       await loadCustomers();
     } catch (error) {
       console.error("Error deleting customer:", error);
+      crashlytics.recordError(error, { source: "delete-customer" });
       showSnackbar("Error deleting customer", "error");
     } finally {
       setDeleteDialogOpen(false);

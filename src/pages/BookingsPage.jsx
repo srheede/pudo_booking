@@ -28,6 +28,7 @@ import {
   senderService,
 } from "../firebase/services";
 import { crashlytics } from "../firebase/crashlytics";
+import { analytics } from "../firebase/analytics";
 import { useAuth } from "../contexts/AuthContext";
 import {
   clearLockersCache,
@@ -402,6 +403,10 @@ const BookingsPage = () => {
             pudoRef: shipmentResult.shipment_id || shipmentResult.id,
             status: "created",
             shipmentData: shipmentResult,
+          });
+          analytics.event("booking_created", {
+            deliveryType: customer.deliveryType || "",
+            lockerSize: size,
           });
 
           results.push({

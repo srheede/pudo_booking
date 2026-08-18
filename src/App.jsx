@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ThemeProvider,
   createTheme,
@@ -33,6 +33,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import ApiKeySetupPage from "./pages/ApiKeySetupPage.jsx";
 import SubscriptionExpiredPage from "./pages/SubscriptionExpiredPage.jsx";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { analytics } from "./firebase/analytics";
 
 const theme = createTheme({
   palette: {
@@ -53,6 +54,26 @@ const AppContent = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, signOut, loading, subscriptionValid, pudoApiKey, publicMode } = useAuth();
+
+  useEffect(() => {
+    if (loading) {
+      analytics.screen("loading");
+      return;
+    }
+    if (!user) {
+      analytics.screen("login");
+      return;
+    }
+    if (publicMode && !subscriptionValid) {
+      analytics.screen("subscription_expired");
+      return;
+    }
+    if (publicMode && !pudoApiKey) {
+      analytics.screen("api_key_setup");
+      return;
+    }
+    analytics.screen(currentPage);
+  }, [loading, user, publicMode, subscriptionValid, pudoApiKey, currentPage]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

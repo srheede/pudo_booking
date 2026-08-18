@@ -29,6 +29,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { authService, userProfileService } from "../firebase/services";
 import { isInternalSession } from "../firebase/config";
 import { crashlytics } from "../firebase/crashlytics";
+import { analytics } from "../firebase/analytics";
 import config from "../../config.json";
 
 const AuthContext = createContext();
@@ -136,6 +137,7 @@ export const AuthProvider = ({ children }) => {
     }
     setPudoApiKey(key);
     crashlytics.setUser(firebaseUser);
+    analytics.setUser(firebaseUser);
   }, []);
 
   // Internal / private session: skip subscription, use baked PUDO key.
@@ -149,7 +151,10 @@ export const AuthProvider = ({ children }) => {
       await notifyMainProcessApiKey(key);
     }
     setPudoApiKey(key);
-    if (firebaseUser) crashlytics.setUser(firebaseUser);
+    if (firebaseUser) {
+      crashlytics.setUser(firebaseUser);
+      analytics.setUser(firebaseUser);
+    }
   }, []);
 
   // ── Auth state listener ─────────────────────────────────────────────────────
@@ -175,6 +180,7 @@ export const AuthProvider = ({ children }) => {
         setPudoApiKey(null);
         setUserProfile(undefined);
         crashlytics.clearUser();
+        analytics.clearUser();
         await notifyMainProcessApiKey(null);
       }
       setLoading(false);
@@ -219,6 +225,7 @@ export const AuthProvider = ({ children }) => {
     setSubscriptionTier(DEFAULT_TIER);
     setPudoApiKey(null);
     crashlytics.clearUser();
+    analytics.clearUser();
     await notifyMainProcessApiKey(null);
   };
 

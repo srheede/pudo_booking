@@ -15,8 +15,9 @@
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, isInternalSession } from "./config";
 import config from "../../config.json";
+import { version as APP_VERSION } from "../../package.json";
 
-const APP_VERSION = "1.0.0";
+const APP = "desktop";
 
 let currentUserId = null;
 let currentUserEmail = null;
@@ -46,6 +47,8 @@ const serializeError = (error) => {
 
 const buildReport = (error, context = {}) => ({
   ...serializeError(error),
+  app: APP,
+  source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
   context: {
     ...context,
     platform: typeof process !== "undefined" ? process.platform : "unknown",

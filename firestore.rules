@@ -19,8 +19,27 @@ service cloud.firestore {
     }
 
     // Crash / error reports from the desktop app (Crashlytics stand-in).
+    // Create is allowed without auth so login-screen failures are still captured.
     match /crashReports/{reportId} {
-      allow create: if request.auth != null;
+      allow create: if request.resource.data.message is string
+                    && request.resource.data.message.size() > 0
+                    && request.resource.data.message.size() < 2500
+                    && request.resource.data.clientTime is string;
+      allow read: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // First-party usage events for the Gengar Games monitoring dashboard.
+    match /analyticsEvents/{eventId} {
+      allow create: if request.resource.data.app in ['desktop', 'homepage']
+                    && request.resource.data.type in ['page_view', 'event', 'session_start']
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() < 128
+                    && request.resource.data.sessionId is string
+                    && request.resource.data.sessionId.size() > 0
+                    && request.resource.data.sessionId.size() < 80
+                    && request.resource.data.clientTime is string;
       allow read: if request.auth != null;
       allow update, delete: if false;
     }

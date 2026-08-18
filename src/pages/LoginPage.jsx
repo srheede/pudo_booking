@@ -12,6 +12,8 @@ import {
   Tab,
 } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext";
+import { analytics } from "../firebase/analytics";
+import { crashlytics } from "../firebase/crashlytics";
 
 const getFriendlyAuthError = (error) => {
   switch (error.code) {
@@ -56,6 +58,7 @@ const LoginPage = () => {
     try {
       if (tabValue === 0) {
         await signIn(email, password);
+        analytics.event("login");
       } else {
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match");
@@ -64,9 +67,13 @@ const LoginPage = () => {
           throw new Error("Password must be at least 6 characters long");
         }
         await signUp(email, password);
+        analytics.event("sign_up");
       }
     } catch (error) {
       setError(getFriendlyAuthError(error));
+      if (!error?.code || !String(error.code).startsWith("auth/")) {
+        crashlytics.recordError(error, { source: "login" });
+      }
     } finally {
       setLoading(false);
     }

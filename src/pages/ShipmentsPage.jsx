@@ -37,6 +37,8 @@ import {
 } from "@mui/icons-material";
 import { bookingService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
+import { analytics } from "../firebase/analytics";
+import { crashlytics } from "../firebase/crashlytics";
 import config from "../../config.json";
 
 const getAuthHeaders = () => ({
@@ -138,6 +140,7 @@ const ShipmentsPage = () => {
       syncPudoStatuses(data);
     } catch (error) {
       console.error("Error loading bookings:", error);
+      crashlytics.recordError(error, { source: "load-shipments" });
       showSnackbar("Error loading shipments", "error");
     } finally {
       setLoading(false);
@@ -181,8 +184,10 @@ const ShipmentsPage = () => {
       });
 
       setBookings(updated);
+      analytics.event("shipments_synced", { count: results.size });
     } catch (error) {
       console.error("Error syncing PUDO statuses:", error);
+      crashlytics.recordError(error, { source: "sync-shipment-statuses" });
     } finally {
       setSyncing(false);
     }
@@ -266,6 +271,7 @@ const ShipmentsPage = () => {
 
       // Only update Firestore after a successful API call
       await bookingService.update(user?.uid, booking.id, { status: "cancelled" });
+      analytics.event("shipment_cancelled");
 
       showSnackbar("Shipment cancelled successfully");
       setCancelDialog({ open: false, booking: null, cancelling: false });
@@ -273,6 +279,7 @@ const ShipmentsPage = () => {
       await loadBookings();
     } catch (error) {
       console.error("Error cancelling shipment:", error);
+      crashlytics.recordError(error, { source: "cancel-shipment" });
       showSnackbar("Failed to cancel shipment on PUDO API. Please try again.", "error");
       setCancelDialog((prev) => ({ ...prev, cancelling: false }));
     }
@@ -364,8 +371,10 @@ const ShipmentsPage = () => {
           "success"
         );
       }
+      analytics.event("waybill_downloaded", { count: shipments.length });
     } catch (err) {
       console.error("Failed to download waybills:", err);
+      crashlytics.recordError(err, { source: "download-waybills" });
       showSnackbar("Failed to download waybills. Please try again.", "error");
     }
 

@@ -26,6 +26,8 @@ import {
   Logout as LogoutIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
+import { analytics } from "../firebase/analytics";
+import { crashlytics } from "../firebase/crashlytics";
 
 const PUDO_PORTAL_URL = "https://app.pudo.co.za";
 
@@ -83,9 +85,11 @@ export default function ApiKeySetupPage() {
     setError("");
     try {
       await updatePudoApiKey(user.uid, trimmed);
+      analytics.event("api_key_saved");
       setSuccess(true);
     } catch (err) {
       setError("Failed to save API key. Please try again.");
+      crashlytics.recordError(err, { source: "save-api-key" });
       console.error(err);
     } finally {
       setSaving(false);
