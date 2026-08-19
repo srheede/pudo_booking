@@ -14,6 +14,7 @@
 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, isInternalSession } from "./config";
+import { shouldSkipTelemetry } from "./bots";
 import config from "../../config.json";
 import { version as APP_VERSION } from "../../package.json";
 
@@ -105,12 +106,14 @@ export const crashlytics = {
 
   /** Record a handled error (API failure, validation, etc.). */
   async recordError(error, context = {}) {
+    if (shouldSkipTelemetry()) return;
     console.error("[Crashlytics]", error, context);
     await persistReport(buildReport(error, context));
   },
 
   /** Record a non-fatal breadcrumb-style log. */
   async log(message, context = {}) {
+    if (shouldSkipTelemetry()) return;
     await persistReport(
       buildReport(new Error(message), { ...context, level: "log" })
     );

@@ -10,10 +10,12 @@
 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, isInternalSession } from "./config";
+import { currentUserAgent, shouldSkipTelemetry } from "./bots";
 import config from "../../config.json";
 import { version as APP_VERSION } from "../../package.json";
 
 const SESSION_KEY = "pudo_analytics_session_id";
+const VISITOR_KEY = "pudo_analytics_visitor_id";
 const APP = "desktop";
 
 let currentUserId = null;
@@ -21,27 +23,6 @@ let currentUserEmail = null;
 let initialized = false;
 let lastScreen = null;
 let sessionStartedAt = null;
-
-const BOT_UA_RE =
-  /googlebot|bingbot|yandex|baiduspider|duckduckbot|slurp|facebookexternalhit|headlesschrome|phantomjs|selenium|webdriver|puppeteer|playwright|\bbot\b|\bcrawler\b|\bspider\b/i;
-
-function isDoNotTrack() {
-  if (typeof navigator === "undefined") return false;
-  return navigator.doNotTrack === "1" || window.doNotTrack === "1";
-}
-
-function isBotUserAgent() {
-  if (typeof navigator === "undefined") return true;
-  const ua = navigator.userAgent || "";
-  if (!ua.trim()) return true;
-  if (BOT_UA_RE.test(ua)) return true;
-  if (navigator.webdriver === true) return true;
-  return false;
-}
-
-function shouldSkip() {
-  return isDoNotTrack() || isBotUserAgent();
-}
 
 function getOrCreateSessionId() {
   try {
@@ -56,8 +37,21 @@ function getOrCreateSessionId() {
   }
 }
 
+function getOrCreateVisitorId() {
+  try {
+    let vid = localStorage.getItem(VISITOR_KEY);
+    if (!vid) {
+      vid = crypto.randomUUID();
+      localStorage.setItem(VISITOR_KEY, vid);
+    }
+    return vid;
+  } catch {
+    return getOrCreateSessionId();
+  }
+}
+
 function detectPlatform() {
-  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const ua = currentUserAgent();
   if (/Windows NT/i.test(ua)) return { os: "Windows", platform: "Windows" };
   if (/Mac OS X/i.test(ua)) return { os: "macOS", platform: "macOS" };
   if (/Linux/i.test(ua)) return { os: "Linux", platform: "Linux" };
@@ -78,8 +72,10 @@ function baseFields() {
     app: APP,
     source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
     sessionId: getOrCreateSessionId(),
+    visitorId: getOrCreateVisitorId(),
     userId: currentUserId,
     userEmail: currentUserEmail,
+    userAgent: currentUserAgent(),
     platform,
     os,
     appVersion: APP_VERSION,
@@ -102,7 +98,7 @@ export const analytics = {
   },
 
   async screen(name) {
-    if (!name || name === lastScreen || shouldSkip()) return;
+    if (!name || name === lastScreen || shouldSkipTelemetry()) return;
     lastScreen = name;
     await persist({
       ...baseFields(),
@@ -112,7 +108,7 @@ export const analytics = {
   },
 
   async event(name, params = {}) {
-    if (!name || shouldSkip()) return;
+    if (!name || shouldSkipTelemetry()) return;
     await persist({
       ...baseFields(),
       type: "event",
@@ -127,7 +123,7 @@ export const analytics = {
   init() {
     if (initialized || typeof window === "undefined") return;
     initialized = true;
-    if (shouldSkip()) return;
+    if (shouldSkipTelemetry()) return;
 
     sessionStartedAt = Date.now();
     persist({
