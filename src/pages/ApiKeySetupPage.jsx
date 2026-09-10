@@ -28,6 +28,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { analytics } from "../firebase/analytics";
 import { crashlytics } from "../firebase/crashlytics";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 const PUDO_PORTAL_URL = "https://app.pudo.co.za";
 
@@ -112,7 +113,7 @@ export default function ApiKeySetupPage() {
           alignItems: "center",
           justifyContent: "center",
           minHeight: "100vh",
-          bgcolor: "grey.50",
+          bgcolor: "background.default",
           p: 2,
         }}
       >
@@ -142,7 +143,7 @@ export default function ApiKeySetupPage() {
         alignItems: "center",
         justifyContent: "flex-start",
         minHeight: "100vh",
-        bgcolor: "grey.50",
+        bgcolor: "background.default",
         p: 3,
         pt: 6,
       }}
@@ -168,15 +169,18 @@ export default function ApiKeySetupPage() {
               Pudo Booking
             </Typography>
           </Box>
-          <Button
-            size="small"
-            color="inherit"
-            startIcon={<LogoutIcon />}
-            onClick={handleSignOut}
-            sx={{ color: "text.secondary" }}
-          >
-            Sign out
-          </Button>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ThemeToggle />
+            <Button
+              size="small"
+              color="inherit"
+              startIcon={<LogoutIcon />}
+              onClick={handleSignOut}
+              sx={{ color: "text.secondary" }}
+            >
+              Sign out
+            </Button>
+          </Box>
         </Box>
 
         <Card sx={{ borderRadius: 3, mb: 3 }}>

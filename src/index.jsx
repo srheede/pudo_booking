@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import ThemeRoot from "./components/ThemeRoot.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { crashlytics } from "./firebase/crashlytics";
 import { analytics } from "./firebase/analytics";
@@ -10,9 +11,6 @@ crashlytics.init();
 analytics.init();
 
 if (isCapacitor()) {
-  import("@capacitor/status-bar")
-    .then(({ StatusBar, Style }) => StatusBar.setStyle({ style: Style.Light }))
-    .catch(() => {});
   import("@capacitor/splash-screen")
     .then(({ SplashScreen }) => SplashScreen.hide())
     .catch(() => {});
@@ -21,8 +19,10 @@ if (isCapacitor()) {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <ThemeRoot>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </ThemeRoot>
   </React.StrictMode>
 );

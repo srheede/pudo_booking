@@ -14,6 +14,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { analytics } from "../firebase/analytics";
 import { crashlytics } from "../firebase/crashlytics";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 const getFriendlyAuthError = (error) => {
   switch (error.code) {
@@ -80,6 +81,18 @@ const LoginPage = () => {
   };
 
   return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        bgcolor: "background.default",
+        display: "flex",
+        alignItems: "flex-start",
+        position: "relative",
+      }}
+    >
+    <Box sx={{ position: "absolute", top: 16, right: 16 }}>
+      <ThemeToggle />
+    </Box>
     <Container component="main" maxWidth="xs">
       <Box
         sx={{
@@ -160,7 +173,7 @@ const LoginPage = () => {
               disabled={loading}
             >
               {loading ? (
-                <CircularProgress size={24} />
+                <CircularProgress size={24} color="inherit" />
               ) : tabValue === 0 ? (
                 "Sign In"
               ) : (
@@ -180,6 +193,7 @@ const LoginPage = () => {
         </Paper>
       </Box>
     </Container>
+    </Box>
   );
 };
 

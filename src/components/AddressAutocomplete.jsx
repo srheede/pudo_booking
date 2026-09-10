@@ -135,21 +135,54 @@ const AddressAutocomplete = ({
     style.textContent = `
       .pac-container {
         z-index: 10000 !important;
-        background-color: white !important;
+        background-color: #ffffff !important;
         border: 1px solid #ccc !important;
         border-radius: 4px !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+        color: #0f172a !important;
       }
       .pac-item {
         padding: 8px 12px !important;
         border-bottom: 1px solid #eee !important;
         cursor: pointer !important;
+        color: #0f172a !important;
       }
       .pac-item:hover {
         background-color: #f5f5f5 !important;
       }
       .pac-item-selected {
         background-color: #e3f2fd !important;
+      }
+      .pac-item-query {
+        color: #0f172a !important;
+      }
+      .pac-matched {
+        color: #1565c0 !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .pac-container {
+          background-color: #111827 !important;
+          border: 1px solid #334155 !important;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important;
+          color: #f1f5f9 !important;
+        }
+        .pac-item {
+          border-bottom: 1px solid #1e293b !important;
+          color: #e2e8f0 !important;
+        }
+        .pac-item:hover {
+          background-color: #1e293b !important;
+        }
+        .pac-item-selected {
+          background-color: rgba(25, 118, 210, 0.24) !important;
+        }
+        .pac-item-query,
+        .pac-item span {
+          color: #e2e8f0 !important;
+        }
+        .pac-matched {
+          color: #90caf9 !important;
+        }
       }
     `;
     document.head.appendChild(style);

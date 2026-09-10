@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Autocomplete, TextField, CircularProgress } from "@mui/material";
+import { Autocomplete, TextField, CircularProgress, Box } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext";
 import { getAllTerminals } from "../api/pudoClient";
 
@@ -132,15 +132,15 @@ const KioskAutocomplete = ({
         const { key, ...otherProps } = props;
         return (
           <li key={key} {...otherProps}>
-            <div>
-              <div style={{ fontWeight: "bold" }}>{option.terminal_id}</div>
-              <div style={{ fontSize: "0.875rem", color: "gray" }}>
+            <Box>
+              <Box sx={{ fontWeight: "bold" }}>{option.terminal_id}</Box>
+              <Box sx={{ fontSize: "0.875rem", color: "text.secondary" }}>
                 {option.name}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "lightgray" }}>
+              </Box>
+              <Box sx={{ fontSize: "0.75rem", color: "text.disabled" }}>
                 {option.address}
-              </div>
-            </div>
+              </Box>
+            </Box>
           </li>
         );
       }}

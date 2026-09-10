@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  ThemeProvider,
-  createTheme,
-  CssBaseline,
   AppBar,
   Toolbar,
   Typography,
@@ -35,24 +32,13 @@ import ApiKeySetupPage from "./pages/ApiKeySetupPage.jsx";
 import SubscriptionExpiredPage from "./pages/SubscriptionExpiredPage.jsx";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { analytics } from "./firebase/analytics";
-
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: {
-      main: "#1976d2",
-    },
-    secondary: {
-      main: "#dc004e",
-    },
-  },
-});
+import ThemeToggle from "./components/ThemeToggle.jsx";
 
 const DRAWER_WIDTH = 240;
 
 const AppContent = () => {
   const [currentPage, setCurrentPage] = useState("customers");
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isMobile = useMediaQuery((theme) => theme.breakpoints.down("md"));
   const { user, signOut, loading, subscriptionValid, pudoApiKey, publicMode } = useAuth();
 
   useEffect(() => {
@@ -122,7 +108,13 @@ const AppContent = () => {
               setCurrentPage(item.id);
             }}
           >
-            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemIcon
+              sx={{
+                color: currentPage === item.id ? "primary.main" : "text.secondary",
+              }}
+            >
+              {item.icon}
+            </ListItemIcon>
             <ListItemText primary={item.label} />
           </ListItem>
         ))}
@@ -133,30 +125,23 @@ const AppContent = () => {
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "100vh",
-          }}
-        >
-          <CircularProgress />
-        </Box>
-      </ThemeProvider>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          bgcolor: "background.default",
+        }}
+      >
+        <CircularProgress />
+      </Box>
     );
   }
 
   // ── Not authenticated ──────────────────────────────────────────────────────
   if (!user) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <LoginPage />
-      </ThemeProvider>
-    );
+    return <LoginPage />;
   }
 
   // ── Subscription gate (PUBLIC_MODE=true only) ─────────────────────────────
@@ -166,12 +151,7 @@ const AppContent = () => {
   // subscription has lapsed the user sees SubscriptionExpiredPage which lets
   // them re-check once they have subscribed/renewed.
   if (publicMode && !subscriptionValid) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <SubscriptionExpiredPage />
-      </ThemeProvider>
-    );
+    return <SubscriptionExpiredPage />;
   }
 
   // ── PUDO API key gate (PUBLIC_MODE=true only) ──────────────────────────────
@@ -180,19 +160,12 @@ const AppContent = () => {
   // In PUBLIC_MODE=true the key is stored per-user in Firestore.  New subscribers
   // who have not yet entered their key are directed to ApiKeySetupPage.
   if (publicMode && !pudoApiKey) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <ApiKeySetupPage />
-      </ThemeProvider>
-    );
+    return <ApiKeySetupPage />;
   }
 
   // ── Main app ───────────────────────────────────────────────────────────────
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box sx={{ display: "flex", minHeight: "100dvh" }}>
+      <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
         <AppBar
           position="fixed"
           sx={{
@@ -216,6 +189,7 @@ const AppContent = () => {
                 {user.email}
               </Typography>
             )}
+            <ThemeToggle variant="appbar" />
             <Button
               color="inherit"
               onClick={handleSignOut}
@@ -238,6 +212,7 @@ const AppContent = () => {
               "& .MuiDrawer-paper": {
                 boxSizing: "border-box",
                 width: DRAWER_WIDTH,
+                bgcolor: "background.paper",
               },
             }}
             open
@@ -253,6 +228,7 @@ const AppContent = () => {
             width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
             mt: { xs: "calc(56px + env(safe-area-inset-top))", md: 8 },
             mb: { xs: "calc(56px + env(safe-area-inset-bottom))", md: 0 },
+            bgcolor: "background.default",
             minHeight: 0,
           }}
         >
@@ -288,8 +264,7 @@ const AppContent = () => {
           </Paper>
         )}
       </Box>
-    </ThemeProvider>
-  );
+    );
 };
 
 const App = () => {

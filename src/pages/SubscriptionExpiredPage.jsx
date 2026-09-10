@@ -17,6 +17,7 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { openExternal, HOMEPAGE_URL } from "../api/openExternal";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function SubscriptionExpiredPage() {
   const { user, signOut, refreshProfile, userProfile } = useAuth();
@@ -55,10 +56,14 @@ export default function SubscriptionExpiredPage() {
         alignItems: "center",
         justifyContent: "center",
         minHeight: "100vh",
-        bgcolor: "grey.50",
+          bgcolor: "background.default",
         p: 3,
+        position: "relative",
       }}
     >
+      <Box sx={{ position: "absolute", top: 16, right: 16 }}>
+        <ThemeToggle />
+      </Box>
       <Card sx={{ maxWidth: 480, width: "100%", borderRadius: 3 }}>
         <CardContent sx={{ p: 5, textAlign: "center" }}>
           {/* Icon */}
@@ -67,7 +72,14 @@ export default function SubscriptionExpiredPage() {
               width: 72,
               height: 72,
               borderRadius: "50%",
-              bgcolor: isNewUser ? "primary.50" : "error.50",
+              bgcolor: (theme) =>
+                isNewUser
+                  ? theme.palette.mode === "dark"
+                    ? "rgba(25, 118, 210, 0.2)"
+                    : "rgba(25, 118, 210, 0.12)"
+                  : theme.palette.mode === "dark"
+                    ? "rgba(244, 67, 54, 0.2)"
+                    : "rgba(244, 67, 54, 0.12)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
