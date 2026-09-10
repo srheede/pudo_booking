@@ -17,23 +17,20 @@ import { db, isInternalSession } from "./config";
 import { shouldSkipTelemetry } from "./bots";
 import config from "../../config.json";
 import { version as APP_VERSION } from "../../package.json";
+import { getRuntime, getIpcRenderer } from "../api/platform";
 
-const APP = "desktop";
+function getAppName() {
+  const runtime = getRuntime();
+  if (runtime === "electron") return "desktop";
+  if (runtime === "capacitor") return "mobile";
+  return "web";
+}
 
 let currentUserId = null;
 let currentUserEmail = null;
 let initialized = false;
 
-const getIpc = () => {
-  try {
-    if (typeof window !== "undefined" && window.require) {
-      return window.require("electron").ipcRenderer;
-    }
-  } catch {
-    // browser / non-electron
-  }
-  return null;
-};
+const getIpc = () => getIpcRenderer();
 
 const serializeError = (error) => {
   if (!error) return { message: "Unknown error" };
@@ -48,7 +45,7 @@ const serializeError = (error) => {
 
 const buildReport = (error, context = {}) => ({
   ...serializeError(error),
-  app: APP,
+  app: getAppName(),
   source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
   context: {
     ...context,

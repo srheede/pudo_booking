@@ -15,12 +15,16 @@ import {
   Box,
   Typography,
   Switch,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import LockerAutocomplete from "./LockerAutocomplete.jsx";
 import KioskAutocomplete from "./KioskAutocomplete.jsx";
 import AddressAutocomplete from "./AddressAutocomplete.jsx";
 
 const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -250,7 +254,13 @@ const CustomerForm = ({ open, onClose, onSave, customer = null }) => {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="md"
+      fullWidth
+      fullScreen={isMobile}
+    >
       <DialogTitle>
         {customer ? "Edit Customer" : "Add New Customer"}
       </DialogTitle>

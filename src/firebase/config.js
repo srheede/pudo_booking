@@ -35,8 +35,23 @@
 
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth, indexedDBLocalPersistence } from "firebase/auth";
 import config from "../../config.json";
+
+function createAuth(app) {
+  // Android/iOS WebViews hang on getAuth()'s default persistence. Capacitor
+  // needs IndexedDB explicitly or onAuthStateChanged may never fire.
+  const native =
+    typeof window !== "undefined" && window.Capacitor?.isNativePlatform?.();
+  if (native) {
+    try {
+      return initializeAuth(app, { persistence: indexedDBLocalPersistence });
+    } catch {
+      return getAuth(app);
+    }
+  }
+  return getAuth(app);
+}
 
 const firebaseConfig = config.FIREBASE;
 
@@ -60,7 +75,7 @@ const primaryApp = initializeApp(firebaseConfig);
 const primaryDb = firebaseConfig.databaseId
   ? getFirestore(primaryApp, firebaseConfig.databaseId)
   : getFirestore(primaryApp);
-const primaryAuth = getAuth(primaryApp);
+const primaryAuth = createAuth(primaryApp);
 
 // Optional second Firebase app for privileged emails in PUBLIC builds.
 // INTERNAL_FIREBASE is baked in by CI alongside the public credentials.
@@ -76,7 +91,7 @@ if (config.INTERNAL_FIREBASE?.apiKey) {
     internalApp = initializeApp(config.INTERNAL_FIREBASE, "internal");
     // Internal project always uses the "(default)" Firestore database.
     internalDb = getFirestore(internalApp);
-    internalAuth = getAuth(internalApp);
+    internalAuth = createAuth(internalApp);
   }
 }
 

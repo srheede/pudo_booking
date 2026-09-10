@@ -7,6 +7,7 @@ pnpm-debug.log*
 
 # Production builds
 build/
+build-web/
 dist/
 out/
 
@@ -17,8 +18,8 @@ out/
 .env.test.local
 .env.production.local
 
-# Electron specific
-app/
+# Electron specific (repo-root only — do not ignore android/app or ios/App)
+/app/
 dist-electron/
 *.dmg
 *.exe
@@ -28,7 +29,10 @@ dist-electron/
 *.snap
 
 # IDE and editor files
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo

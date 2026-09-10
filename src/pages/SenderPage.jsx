@@ -255,7 +255,7 @@ const SenderPage = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, pb: { xs: 10, md: 3 } }}>
       <Box
         sx={{
           display: "flex",
@@ -264,7 +264,7 @@ const SenderPage = () => {
           mb: 3,
         }}
       >
-        <Typography variant="h4" component="h1">
+        <Typography variant="h4" component="h1" sx={{ fontSize: { xs: "1.5rem", md: "2.125rem" } }}>
           Sender Details
         </Typography>
         <Button

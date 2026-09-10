@@ -14,32 +14,32 @@ import {
   Snackbar,
   TextField,
   InputAdornment,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  CircularProgress,
+  Fab,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { Add, Edit, Delete, Search } from "@mui/icons-material";
-import config from "../../config.json";
 import { customerService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
 import { analytics } from "../firebase/analytics";
 import { crashlytics } from "../firebase/crashlytics";
 import CustomerForm from "../components/CustomerForm.jsx";
-import LockerAutocomplete, {
-  clearLockersCache,
-  isCacheValid,
-} from "../components/LockerAutocomplete.jsx";
-
-// Helper function to get Authorization header
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
-
-const ipcRenderer = window.require
-  ? window.require("electron").ipcRenderer
-  : null;
+import {
+  getAllTerminals,
+  terminalsToMaps,
+  formatDeliveryLocation,
+  deliveryTypeChip,
+} from "../api/pudoClient";
 
 const CustomersPage = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,36 +78,10 @@ const CustomersPage = () => {
 
   const loadLockersData = async () => {
     try {
-      let terminals;
-
-      if (!ipcRenderer) {
-        const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        terminals = await response.json();
-      } else {
-        terminals = await ipcRenderer.invoke("get-all-terminals");
-      }
-
-      if (terminals && Array.isArray(terminals)) {
-        const lockersMapping = {};
-        const kiosksMapping = {};
-        terminals.forEach((terminal) => {
-          if (terminal.type?.id === 2) {
-            lockersMapping[terminal.code] = terminal.name;
-          } else if (terminal.type?.id === 1) {
-            kiosksMapping[terminal.code] = terminal.name;
-          }
-        });
-        setLockersMap(lockersMapping);
-        setKiosksMap(kiosksMapping);
-      }
+      const terminals = await getAllTerminals();
+      const maps = terminalsToMaps(terminals);
+      setLockersMap(maps.lockersMap);
+      setKiosksMap(maps.kiosksMap);
     } catch (error) {
       console.error("Error loading lockers data:", error);
     }
@@ -201,10 +175,8 @@ const CustomersPage = () => {
       headerName: "Delivery Type",
       width: 120,
       renderCell: (params) => {
-        const type = params.value;
-        const label = type === "locker" ? "Locker" : type === "kiosk" ? "Kiosk" : "Address";
-        const color = type === "locker" ? "primary" : type === "kiosk" ? "warning" : "secondary";
-        return <Chip label={label} color={color} size="small" />;
+        const chip = deliveryTypeChip(params.value);
+        return <Chip label={chip.label} color={chip.color} size="small" />;
       },
     },
     {
@@ -212,28 +184,8 @@ const CustomersPage = () => {
       headerName: "Delivery Location",
       width: 200,
       flex: 1,
-      renderCell: (params) => {
-        const customer = params.row;
-        if (customer.deliveryType === "locker") {
-          const lockerName = lockersMap[customer.lockerId];
-          return lockerName
-            ? `${customer.lockerId} - ${lockerName}`
-            : customer.lockerId || "Not set";
-        } else if (customer.deliveryType === "kiosk") {
-          const kioskName = kiosksMap[customer.kioskId];
-          return kioskName
-            ? `${customer.kioskId} - ${kioskName}`
-            : customer.kioskId || "Not set";
-        } else {
-          const address = customer.address;
-          if (address) {
-            return `${address.street || ""}, ${address.suburb || ""}, ${
-              address.city || ""
-            }`.replace(/^,\s*|,\s*$/g, "");
-          }
-          return "Not set";
-        }
-      },
+      renderCell: (params) =>
+        formatDeliveryLocation(params.row, lockersMap, kiosksMap),
     },
     {
       field: "actions",
@@ -293,7 +245,7 @@ const CustomersPage = () => {
   });
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, pb: { xs: 10, md: 3 } }}>
       <Box
         sx={{
           display: "flex",
@@ -302,17 +254,19 @@ const CustomersPage = () => {
           mb: 2,
         }}
       >
-        <Typography variant="h4" component="h1">
+        <Typography variant={isMobile ? "h5" : "h4"} component="h1">
           Customers
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleAddCustomer}
-          disabled={atCustomerLimit}
-        >
-          Add Customer
-        </Button>
+        {!isMobile && (
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleAddCustomer}
+            disabled={atCustomerLimit}
+          >
+            Add Customer
+          </Button>
+        )}
       </Box>
 
       {atCustomerLimit && (
@@ -328,7 +282,7 @@ const CustomersPage = () => {
         placeholder="Search customers…"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        sx={{ mb: 2, width: 320 }}
+        sx={{ mb: 2, width: { xs: "100%", md: 320 } }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
@@ -338,20 +292,101 @@ const CustomersPage = () => {
         }}
       />
 
-      <Paper sx={{ height: 600, width: "100%" }}>
-        <DataGrid
-          rows={filteredCustomers}
-          columns={columns}
-          loading={loading}
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: {
-              paginationModel: { page: 0, pageSize: 10 },
-            },
+      {isMobile ? (
+        <Paper>
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+              <CircularProgress />
+            </Box>
+          ) : filteredCustomers.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: "center" }}>
+              <Typography color="text.secondary">No customers found</Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {filteredCustomers.map((customer) => {
+                const chip = deliveryTypeChip(customer.deliveryType);
+                return (
+                  <ListItem
+                    key={customer.id}
+                    divider
+                    onClick={() => handleEditCustomer(customer)}
+                    sx={{ pr: 10 }}
+                  >
+                    <ListItemText
+                      primary={customer.name}
+                      secondary={
+                        <>
+                          <Chip
+                            label={chip.label}
+                            color={chip.color}
+                            size="small"
+                            sx={{ mr: 1, my: 0.5 }}
+                          />
+                          {formatDeliveryLocation(customer, lockersMap, kiosksMap)}
+                        </>
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditCustomer(customer);
+                        }}
+                        color="primary"
+                      >
+                        <Edit />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCustomer(customer);
+                        }}
+                        color="error"
+                      >
+                        <Delete />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </Paper>
+      ) : (
+        <Paper sx={{ height: 600, width: "100%" }}>
+          <DataGrid
+            rows={filteredCustomers}
+            columns={columns}
+            loading={loading}
+            pageSizeOptions={[10, 25, 50]}
+            initialState={{
+              pagination: {
+                paginationModel: { page: 0, pageSize: 10 },
+              },
+            }}
+            disableRowSelectionOnClick
+          />
+        </Paper>
+      )}
+
+      {isMobile && (
+        <Fab
+          color="primary"
+          aria-label="add customer"
+          onClick={handleAddCustomer}
+          disabled={atCustomerLimit}
+          sx={{
+            position: "fixed",
+            right: 16,
+            bottom: "calc(72px + env(safe-area-inset-bottom))",
           }}
-          disableRowSelectionOnClick
-        />
-      </Paper>
+        >
+          <Add />
+        </Fab>
+      )}
 
       <CustomerForm
         open={formOpen}
@@ -363,6 +398,7 @@ const CustomersPage = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        fullScreen={isMobile}
       >
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>

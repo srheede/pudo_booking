@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { PDFDocument } from "pdf-lib";
 import {
   Box,
   Typography,
@@ -21,6 +20,12 @@ import {
   Stack,
   TextField,
   InputAdornment,
+  Card,
+  CardActionArea,
+  CardContent,
+  Checkbox,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import {
@@ -39,17 +44,11 @@ import { bookingService } from "../firebase/services";
 import { useAuth } from "../contexts/AuthContext";
 import { analytics } from "../firebase/analytics";
 import { crashlytics } from "../firebase/crashlytics";
-import config from "../../config.json";
-
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
-
-const ipcRenderer = window.require
-  ? window.require("electron").ipcRenderer
-  : null;
+import {
+  getShipment,
+  cancelShipment,
+  downloadWaybillPdfs,
+} from "../api/pudoClient";
 
 const STATUS_CONFIG = {
   created: { label: "Created", color: "info" },
@@ -96,6 +95,8 @@ const getStatusConfig = (status) =>
   STATUS_CONFIG[status?.toLowerCase?.()] || { label: status || "Unknown", color: "default" };
 
 const ShipmentsPage = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -199,14 +200,7 @@ const ShipmentsPage = () => {
 
   const fetchShipmentFromAPI = async (pudoRef) => {
     if (!pudoRef) throw new Error("No shipment reference");
-    if (ipcRenderer) {
-      return await ipcRenderer.invoke("get-shipment", pudoRef);
-    }
-    const response = await fetch(`${config.API_BASE_URL}/shipments/${pudoRef}`, {
-      headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
+    return await getShipment(pudoRef);
   };
 
   const closeViewDialog = () =>
@@ -251,23 +245,7 @@ const ShipmentsPage = () => {
     setCancelDialog((prev) => ({ ...prev, cancelling: true }));
 
     try {
-      // Call PUDO API: PUT /shipments/{id} with status cancelled
-      if (ipcRenderer) {
-        await ipcRenderer.invoke("cancel-shipment", booking.pudoRef);
-      } else {
-        const response = await fetch(
-          `${config.API_BASE_URL}/shipments/${booking.pudoRef}`,
-          {
-            method: "PUT",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ status: "cancelled" }),
-          }
-        );
-        if (!response.ok) {
-          const errBody = await response.text();
-          throw new Error(`PUDO API error ${response.status}: ${errBody}`);
-        }
-      }
+      await cancelShipment(booking.pudoRef);
 
       // Only update Firestore after a successful API call
       await bookingService.update(user?.uid, booking.id, { status: "cancelled" });
@@ -298,79 +276,14 @@ const ShipmentsPage = () => {
     setDownloading({ active: true, current: 0, total: shipments.length });
 
     try {
-      if (ipcRenderer) {
-        await ipcRenderer.invoke("download-waybills-combined", shipments);
-        showSnackbar(
-          `${shipments.length} waybill${shipments.length !== 1 ? "s" : ""} combined and downloaded`,
-          "success"
-        );
-      } else {
-        // Browser dev fallback: fetch each PDF via Vite proxy then combine with pdf-lib.
-        const A4_W = 595.28;
-        const A4_H = 841.89;
-        const COLS = 2;
-        const ROWS = 3;
-        const WAYBILLS_PER_PAGE = COLS * ROWS;
-        const SLOT_W = A4_W / COLS;
-        const SLOT_H = A4_H / ROWS;
-
-        const pdfBuffers = [];
-        for (let i = 0; i < shipments.length; i++) {
-          setDownloading((prev) => ({ ...prev, current: i + 1 }));
-          const res = await fetch(
-            `/pudo-generate/sticker/${shipments[i].shipmentId}?api_key=${config.PUDO_API_KEY}`
-          );
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          pdfBuffers.push(await res.arrayBuffer());
-        }
-
-        const combinedDoc = await PDFDocument.create();
-        for (let pageStart = 0; pageStart < pdfBuffers.length; pageStart += WAYBILLS_PER_PAGE) {
-          const chunk = pdfBuffers.slice(pageStart, pageStart + WAYBILLS_PER_PAGE);
-          const page = combinedDoc.addPage([A4_W, A4_H]);
-
-          for (let i = 0; i < chunk.length; i++) {
-            const col = i % COLS;
-            const row = Math.floor(i / COLS);
-            const slotX = col * SLOT_W;
-            const slotY = A4_H - (row + 1) * SLOT_H;
-
-            const waybillDoc = await PDFDocument.load(chunk[i]);
-            const [embeddedPage] = await combinedDoc.embedPdf(waybillDoc);
-            const { width: origW, height: origH } = embeddedPage;
-            const scale = Math.min(SLOT_W / origW, SLOT_H / origH);
-            const scaledW = origW * scale;
-            const scaledH = origH * scale;
-
-            page.drawPage(embeddedPage, {
-              x: slotX + (SLOT_W - scaledW) / 2,
-              y: slotY + (SLOT_H - scaledH) / 2,
-              width: scaledW,
-              height: scaledH,
-            });
-          }
-        }
-
-        const pdfBytes = await combinedDoc.save();
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        const firstName = shipments[0]?.trackingRef;
-        a.download =
-          shipments.length === 1
-            ? `${firstName}.pdf`
-            : `waybills_${firstName}_+${shipments.length - 1}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-
-        showSnackbar(
-          `${shipments.length} waybill${shipments.length !== 1 ? "s" : ""} combined and downloaded`,
-          "success"
-        );
-      }
+      await downloadWaybillPdfs(shipments, {
+        onProgress: (current) =>
+          setDownloading((prev) => ({ ...prev, current })),
+      });
+      showSnackbar(
+        `${shipments.length} waybill${shipments.length !== 1 ? "s" : ""} combined and downloaded`,
+        "success"
+      );
       analytics.event("waybill_downloaded", { count: shipments.length });
     } catch (err) {
       console.error("Failed to download waybills:", err);
@@ -542,17 +455,19 @@ const ShipmentsPage = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, pb: { xs: 10, md: 3 } }}>
       <Box
         sx={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          mb: 3,
+          mb: { xs: 2, md: 3 },
+          flexWrap: "wrap",
+          gap: 1,
         }}
       >
         <Box>
-          <Typography variant="h4" component="h1">
+          <Typography variant={isMobile ? "h5" : "h4"} component="h1">
             Shipments
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -563,13 +478,14 @@ const ShipmentsPage = () => {
           {syncing && (
             <Typography variant="caption" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <CircularProgress size={12} />
-              Syncing with PUDO…
+              {!isMobile && "Syncing with PUDO…"}
             </Typography>
           )}
           {selectedIds.length > 0 && (
             <Button
               variant="contained"
               color="primary"
+              size={isMobile ? "small" : "medium"}
               startIcon={
                 downloading.active ? <CircularProgress size={16} color="inherit" /> : <Download />
               }
@@ -577,12 +493,15 @@ const ShipmentsPage = () => {
               disabled={downloading.active}
             >
               {downloading.active
-                ? `Downloading ${downloading.current}/${downloading.total}…`
+                ? `${downloading.current}/${downloading.total}`
+                : isMobile
+                ? `Labels (${selectedIds.length})`
                 : `Download Label${selectedIds.length !== 1 ? "s" : ""} (${selectedIds.length})`}
             </Button>
           )}
           <Button
             variant="outlined"
+            size={isMobile ? "small" : "medium"}
             startIcon={loading ? <CircularProgress size={16} /> : <Refresh />}
             onClick={loadBookings}
             disabled={loading || syncing}
@@ -597,7 +516,7 @@ const ShipmentsPage = () => {
         placeholder="Search shipments…"
         value={searchQuery}
         onChange={(e) => { setSearchQuery(e.target.value); setAllFilteredSelected(false); }}
-        sx={{ mb: 2, width: 320 }}
+        sx={{ mb: 2, width: { xs: "100%", md: 320 } }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
@@ -619,7 +538,7 @@ const ShipmentsPage = () => {
         </Box>
       )}
 
-      {showSelectAllBanner && (
+      {showSelectAllBanner && !isMobile && (
         <Alert
           severity="info"
           sx={{ mb: 1 }}
@@ -632,7 +551,7 @@ const ShipmentsPage = () => {
           All {visibleBookings.length} items on this page are selected.
         </Alert>
       )}
-      {allFilteredSelected && (
+      {allFilteredSelected && !isMobile && (
         <Alert
           severity="info"
           sx={{ mb: 1 }}
@@ -650,24 +569,79 @@ const ShipmentsPage = () => {
         </Alert>
       )}
 
-      <Paper sx={{ height: 620, width: "100%" }}>
-        <DataGrid
-          rows={filteredBookings}
-          columns={columns}
-          loading={loading}
-          pageSizeOptions={[10, 25, 50]}
-          checkboxSelection
-          disableRowSelectionOnClick
-          rowSelectionModel={selectedIds}
-          onRowSelectionModelChange={handleSelectionChange}
-          paginationModel={paginationModel}
-          onPaginationModelChange={setPaginationModel}
-          sx={{ "& .MuiDataGrid-cell": { alignItems: "center" } }}
-        />
-      </Paper>
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {loading && filteredBookings.length === 0 ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+              <CircularProgress />
+            </Box>
+          ) : filteredBookings.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: "center" }}>
+              <Typography color="text.secondary">No shipments found</Typography>
+            </Paper>
+          ) : (
+            filteredBookings.map((booking) => {
+              const cfg = getStatusConfig(booking.status);
+              const tracking =
+                booking.shipmentData?.custom_tracking_reference ||
+                booking.pudoRef ||
+                "—";
+              const selected = selectedIds.includes(booking.id);
+              return (
+                <Card key={booking.id} variant="outlined">
+                  <CardContent sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                    <Checkbox
+                      checked={selected}
+                      onChange={() => {
+                        setSelectedIds((prev) =>
+                          prev.includes(booking.id)
+                            ? prev.filter((id) => id !== booking.id)
+                            : [...prev, booking.id]
+                        );
+                      }}
+                      sx={{ mt: -0.5 }}
+                    />
+                    <CardActionArea
+                      onClick={() => handleView(booking)}
+                      sx={{ borderRadius: 1, p: 0.5 }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+                        <Typography variant="subtitle2" sx={{ fontFamily: "monospace", fontWeight: 700 }}>
+                          {tracking}
+                        </Typography>
+                        <Chip label={cfg.label} color={cfg.color} size="small" />
+                      </Box>
+                      <Typography variant="body2">{booking.customerName}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {booking.lockerSize || "—"} · {formatDate(booking.createdAt)}
+                      </Typography>
+                    </CardActionArea>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </Stack>
+      ) : (
+        <Paper sx={{ height: 620, width: "100%" }}>
+          <DataGrid
+            rows={filteredBookings}
+            columns={columns}
+            loading={loading}
+            pageSizeOptions={[10, 25, 50]}
+            checkboxSelection
+            disableRowSelectionOnClick
+            rowSelectionModel={selectedIds}
+            onRowSelectionModelChange={handleSelectionChange}
+            paginationModel={paginationModel}
+            onPaginationModelChange={setPaginationModel}
+            sx={{ "& .MuiDataGrid-cell": { alignItems: "center" } }}
+          />
+        </Paper>
+      )}
 
       {/* ─── View Dialog ─── */}
-      <Dialog open={viewDialog.open} onClose={closeViewDialog} maxWidth="md" fullWidth>
+      <Dialog open={viewDialog.open} onClose={closeViewDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>

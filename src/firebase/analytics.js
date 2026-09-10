@@ -13,10 +13,17 @@ import { db, isInternalSession } from "./config";
 import { currentUserAgent, shouldSkipTelemetry } from "./bots";
 import config from "../../config.json";
 import { version as APP_VERSION } from "../../package.json";
+import { getRuntime } from "../api/platform";
 
 const SESSION_KEY = "pudo_analytics_session_id";
 const VISITOR_KEY = "pudo_analytics_visitor_id";
-const APP = "desktop";
+
+function getAppName() {
+  const runtime = getRuntime();
+  if (runtime === "electron") return "desktop";
+  if (runtime === "capacitor") return "mobile";
+  return "web";
+}
 
 let currentUserId = null;
 let currentUserEmail = null;
@@ -51,6 +58,13 @@ function getOrCreateVisitorId() {
 }
 
 function detectPlatform() {
+  const runtime = getRuntime();
+  if (runtime === "capacitor") {
+    const ua = currentUserAgent();
+    if (/iPhone|iPad|iOS/i.test(ua)) return { os: "iOS", platform: "iOS" };
+    if (/Android/i.test(ua)) return { os: "Android", platform: "Android" };
+    return { os: "Mobile", platform: "Mobile" };
+  }
   const ua = currentUserAgent();
   if (/Windows NT/i.test(ua)) return { os: "Windows", platform: "Windows" };
   if (/Mac OS X/i.test(ua)) return { os: "macOS", platform: "macOS" };
@@ -69,7 +83,7 @@ async function persist(payload) {
 function baseFields() {
   const { os, platform } = detectPlatform();
   return {
-    app: APP,
+    app: getAppName(),
     source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
     sessionId: getOrCreateSessionId(),
     visitorId: getOrCreateVisitorId(),

@@ -33,6 +33,7 @@
 
   "PUDO_API_KEY": "your_pudo_api_key_here",
   "API_BASE_URL": "https://api-pudo.co.za/api/v1",
+  "ECOMMERCE_BOOKING_URL": "",
   "GOOGLE_MAPS_API_KEY": "your_google_maps_api_key_here",
 
   "INTERNAL_EMAILS": [

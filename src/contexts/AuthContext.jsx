@@ -164,26 +164,31 @@ export const AuthProvider = ({ children }) => {
     const timeout = setTimeout(() => setLoading(false), 8000);
 
     const unsubscribe = authService.onAuthStateChanged(async (firebaseUser) => {
-      clearTimeout(timeout);
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        if (isInternalSession || !config.PUBLIC_MODE) {
-          await activateInternalSession(firebaseUser);
+      try {
+        setUser(firebaseUser);
+        if (firebaseUser) {
+          if (isInternalSession || !config.PUBLIC_MODE) {
+            await activateInternalSession(firebaseUser);
+          } else {
+            setPublicMode(true);
+            await loadUserProfile(firebaseUser);
+          }
         } else {
-          setPublicMode(true);
-          await loadUserProfile(firebaseUser);
+          // User signed out — clear all subscription state.
+          setPublicMode(config.PUBLIC_MODE === true);
+          setSubscriptionValid(false);
+          setPudoApiKey(null);
+          setUserProfile(undefined);
+          crashlytics.clearUser();
+          analytics.clearUser();
+          await notifyMainProcessApiKey(null);
         }
-      } else {
-        // User signed out — clear all subscription state.
-        setPublicMode(config.PUBLIC_MODE === true);
-        setSubscriptionValid(false);
-        setPudoApiKey(null);
-        setUserProfile(undefined);
-        crashlytics.clearUser();
-        analytics.clearUser();
-        await notifyMainProcessApiKey(null);
+      } catch (err) {
+        console.error("[Auth] Failed to finish sign-in:", err);
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {

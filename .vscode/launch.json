@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Web app (Vite)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5180/app/",
+      "webRoot": "${workspaceFolder}/src",
+      "preLaunchTask": "dev:web"
+    },
+    {
+      "name": "Electron desktop",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+      },
+      "runtimeArgs": ["."],
+      "env": {
+        "ELECTRON_DEV": "1",
+        "NODE_ENV": "development"
+      },
+      "preLaunchTask": "dev-react"
+    }
+  ]
+}

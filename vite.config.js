@@ -11,7 +11,7 @@ const getAuthHeaders = () => ({
 
 export default defineConfig({
   plugins: [react()],
-  base: "./",
+  base: process.env.VITE_BASE || "./",
   define: {
     "process.env.PUDO_API_KEY": JSON.stringify(getAuthHeaders().Authorization),
   },
@@ -25,8 +25,18 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: process.env.VITE_WEB_DEV === "1" ? 5180 : 3000,
     strictPort: true,
+    cors: true,
+    ...(process.env.VITE_WEB_DEV === "1"
+      ? {
+          hmr: {
+            host: "localhost",
+            port: 5180,
+            clientPort: 5180,
+          },
+        }
+      : {}),
     proxy: {
       // Proxy PUDO waybill/sticker label generation to avoid CORS in browser dev mode.
       // Electron uses IPC instead and never hits this proxy.

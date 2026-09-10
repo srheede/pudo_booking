@@ -19,9 +19,19 @@ import {
   LinearProgress,
   TextField,
   InputAdornment,
+  Stepper,
+  Step,
+  StepLabel,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { LocalShipping, Send, Search } from "@mui/icons-material";
+import { Send, Search } from "@mui/icons-material";
 import {
   customerService,
   bookingService,
@@ -31,21 +41,13 @@ import { crashlytics } from "../firebase/crashlytics";
 import { analytics } from "../firebase/analytics";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  clearLockersCache,
-  isCacheValid,
-} from "../components/LockerAutocomplete.jsx";
-import config from "../../config.json";
-
-// Helper function to get Authorization header
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
-
-const ipcRenderer = window.require
-  ? window.require("electron").ipcRenderer
-  : null;
+  getAllTerminals,
+  createShipment,
+  terminalsToMaps,
+  formatDeliveryLocation,
+  deliveryTypeChip,
+} from "../api/pudoClient";
+import { notifyEcommerceBookingCreated } from "../api/notifyEcommerceBooking";
 
 const LOCKER_SIZES = [
   { value: "XS", label: "Extra Small (XS)" },
@@ -133,6 +135,8 @@ const buildAddressObject = (address) => {
 };
 
 const BookingsPage = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, tierLimits, subscriptionTier, pudoApiKey, publicMode, userProfile } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
@@ -156,6 +160,7 @@ const BookingsPage = () => {
   const [lockersMap, setLockersMap] = useState({});
   const [kiosksMap, setKiosksMap] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [mobileStep, setMobileStep] = useState(0);
 
   useEffect(() => {
     // In PUBLIC_MODE, wait until the API key has been loaded from the user profile.
@@ -190,36 +195,10 @@ const BookingsPage = () => {
 
   const loadTerminalsData = async () => {
     try {
-      let terminals;
-
-      if (!ipcRenderer) {
-        const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        terminals = await response.json();
-      } else {
-        terminals = await ipcRenderer.invoke("get-all-terminals");
-      }
-
-      if (terminals && Array.isArray(terminals)) {
-        const lockersMapping = {};
-        const kiosksMapping = {};
-        terminals.forEach((terminal) => {
-          if (terminal.type?.id === 2) {
-            lockersMapping[terminal.code] = terminal.name;
-          } else if (terminal.type?.id === 1) {
-            kiosksMapping[terminal.code] = terminal.name;
-          }
-        });
-        setLockersMap(lockersMapping);
-        setKiosksMap(kiosksMapping);
-      }
+      const terminals = await getAllTerminals();
+      const maps = terminalsToMaps(terminals);
+      setLockersMap(maps.lockersMap);
+      setKiosksMap(maps.kiosksMap);
     } catch (error) {
       console.error("Error loading terminals data:", error);
     }
@@ -364,44 +343,22 @@ const BookingsPage = () => {
             service_level_code: serviceCode,
           };
 
-          let shipmentResult;
-          if (ipcRenderer) {
-            shipmentResult = await ipcRenderer.invoke(
-              "create-shipment",
-              payload
-            );
-          } else {
-            // Browser mode: make direct API call
-            const response = await fetch(`${config.API_BASE_URL}/shipments`, {
-              method: "POST",
-              headers: getAuthHeaders(),
-              body: JSON.stringify(payload),
-            });
-
-            if (!response.ok) {
-              const errBody = await response.text().catch(() => "");
-              let message = `HTTP ${response.status}`;
-              if (errBody) {
-                try {
-                  const parsed = JSON.parse(errBody);
-                  message = parsed.message || `${message}: ${errBody.slice(0, 300)}`;
-                } catch {
-                  message = `${message}: ${errBody.slice(0, 300)}`;
-                }
-              }
-              throw new Error(message);
-            }
-
-            shipmentResult = await response.json();
-          }
+          const shipmentResult = await createShipment(payload);
 
           // Save booking to Firebase
           await bookingService.add(user?.uid, {
             customerId: customer.id,
             customerName: customer.name,
+            customerEmail: customer.email || "",
             lockerSize: size,
             pudoRef: shipmentResult.shipment_id || shipmentResult.id,
             status: "created",
+            shipmentData: shipmentResult,
+          });
+          await notifyEcommerceBookingCreated({
+            customerId: customer.id,
+            customerEmail: customer.email || "",
+            pudoRef: shipmentResult.shipment_id || shipmentResult.id,
             shipmentData: shipmentResult,
           });
           analytics.event("booking_created", {
@@ -467,6 +424,7 @@ const BookingsPage = () => {
       // Clear selections
       setSelectedCustomers([]);
       setCustomerSizes({});
+      setMobileStep(0);
     } catch (error) {
       console.error("Error creating bookings:", error);
       showSnackbar("Error creating bookings", "error");
@@ -493,10 +451,8 @@ const BookingsPage = () => {
       headerName: "Delivery Type",
       width: 120,
       renderCell: (params) => {
-        const type = params.value;
-        const label = type === "locker" ? "Locker" : type === "kiosk" ? "Kiosk" : "Address";
-        const color = type === "locker" ? "primary" : type === "kiosk" ? "warning" : "secondary";
-        return <Chip label={label} color={color} size="small" />;
+        const chip = deliveryTypeChip(params.value);
+        return <Chip label={chip.label} color={chip.color} size="small" />;
       },
     },
     {
@@ -504,28 +460,8 @@ const BookingsPage = () => {
       headerName: "Delivery Location",
       width: 200,
       flex: 1,
-      renderCell: (params) => {
-        const customer = params.row;
-        if (customer.deliveryType === "locker") {
-          const lockerName = lockersMap[customer.lockerId];
-          return lockerName
-            ? `${customer.lockerId} - ${lockerName}`
-            : customer.lockerId || "Not set";
-        } else if (customer.deliveryType === "kiosk") {
-          const kioskName = kiosksMap[customer.kioskId];
-          return kioskName
-            ? `${customer.kioskId} - ${kioskName}`
-            : customer.kioskId || "Not set";
-        } else {
-          const address = customer.address;
-          if (address) {
-            return `${address.street || ""}, ${address.suburb || ""}, ${
-              address.city || ""
-            }`.replace(/^,\s*|,\s*$/g, "");
-          }
-          return "Not set";
-        }
-      },
+      renderCell: (params) =>
+        formatDeliveryLocation(params.row, lockersMap, kiosksMap),
     },
     {
       field: "packageSize",
@@ -585,6 +521,280 @@ const BookingsPage = () => {
     visibleCustomers.every((c) => selectedCustomers.includes(c.id));
   const showSelectAllBanner =
     allPageSelected && !allFilteredSelected && filteredCustomers.length > visibleCustomers.length;
+
+  const toggleCustomer = (customerId) => {
+    if (selectedCustomers.includes(customerId)) {
+      handleSelectionChange(selectedCustomers.filter((id) => id !== customerId));
+    } else {
+      handleSelectionChange([...selectedCustomers, customerId]);
+    }
+  };
+
+  const selectedCustomerData = customers.filter((c) =>
+    selectedCustomers.includes(c.id)
+  );
+
+  const alerts = (
+    <>
+      {!sender && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Please configure your sender details before creating bookings.
+        </Alert>
+      )}
+
+      {maxMonthlyBookings !== null && (
+        <Alert
+          severity={monthlyBookingCount >= maxMonthlyBookings ? "error" : "info"}
+          sx={{ mb: 2 }}
+        >
+          {monthlyBookingCount >= maxMonthlyBookings
+            ? `You have used all ${maxMonthlyBookings} bookings for this billing period on your ${subscriptionTier} plan. Upgrade your plan to continue booking.`
+            : `Bookings this billing period: ${monthlyBookingCount} / ${maxMonthlyBookings} used (${remainingBookings} remaining).`}
+        </Alert>
+      )}
+    </>
+  );
+
+  const confirmAndSnackbar = (
+    <>
+      <Dialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog({ open: false, customers: [] })}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+      >
+        <DialogTitle>Confirm Bookings</DialogTitle>
+        <DialogContent>
+          <Typography gutterBottom>
+            You are about to create bookings for the following customers:
+          </Typography>
+          {confirmDialog.customers.map((customer) => (
+            <Box
+              key={customer.id}
+              sx={{ display: "flex", justifyContent: "space-between", py: 1 }}
+            >
+              <Typography>{customer.name}</Typography>
+              <Chip
+                label={customerSizes[customer.id] || defaultSize}
+                size="small"
+                color="primary"
+              />
+            </Box>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmDialog({ open: false, customers: [] })}
+          >
+            Cancel
+          </Button>
+          <Button onClick={confirmCreateBookings} variant="contained">
+            Confirm & Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <Box sx={{ p: 2, pb: 10 }}>
+        <Typography variant="h5" component="h1" sx={{ mb: 2 }}>
+          Create Bookings
+        </Typography>
+        {alerts}
+        <Stepper activeStep={mobileStep} alternativeLabel sx={{ mb: 2 }}>
+          <Step>
+            <StepLabel>Select</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Sizes</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Confirm</StepLabel>
+          </Step>
+        </Stepper>
+
+        {mobileStep === 0 && (
+          <>
+            <TextField
+              size="small"
+              placeholder="Search customers…"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setAllFilteredSelected(false);
+              }}
+              fullWidth
+              sx={{ mb: 1 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Paper>
+              <List disablePadding>
+                {filteredCustomers.map((customer) => {
+                  const chip = deliveryTypeChip(customer.deliveryType);
+                  return (
+                    <ListItem key={customer.id} disablePadding divider>
+                      <ListItemButton onClick={() => toggleCustomer(customer.id)}>
+                        <ListItemIcon>
+                          <Checkbox
+                            edge="start"
+                            checked={selectedCustomers.includes(customer.id)}
+                            tabIndex={-1}
+                            disableRipple
+                          />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={customer.name}
+                          secondary={
+                            <>
+                              <Chip
+                                label={chip.label}
+                                color={chip.color}
+                                size="small"
+                                sx={{ mr: 1, my: 0.5 }}
+                              />
+                              {formatDeliveryLocation(customer, lockersMap, kiosksMap)}
+                            </>
+                          }
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </Paper>
+            <Button
+              variant="contained"
+              fullWidth
+              sx={{ mt: 2 }}
+              disabled={selectedCustomers.length === 0}
+              onClick={() => setMobileStep(1)}
+            >
+              Next ({selectedCustomers.length} selected)
+            </Button>
+          </>
+        )}
+
+        {mobileStep === 1 && (
+          <>
+            <FormControl size="small" fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Default Size</InputLabel>
+              <Select
+                value={defaultSize}
+                onChange={(e) => {
+                  const size = e.target.value;
+                  setDefaultSize(size);
+                  const next = { ...customerSizes };
+                  selectedCustomers.forEach((id) => {
+                    next[id] = size;
+                  });
+                  setCustomerSizes(next);
+                }}
+                label="Default Size"
+              >
+                {LOCKER_SIZES.map((size) => (
+                  <MenuItem key={size.value} value={size.value}>
+                    {size.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Paper>
+              <List disablePadding>
+                {selectedCustomerData.map((customer) => (
+                  <ListItem key={customer.id} divider>
+                    <ListItemText primary={customer.name} />
+                    <FormControl size="small" sx={{ minWidth: 90 }}>
+                      <Select
+                        value={customerSizes[customer.id] || defaultSize}
+                        onChange={(e) => handleSizeChange(customer.id, e.target.value)}
+                      >
+                        {LOCKER_SIZES.map((size) => (
+                          <MenuItem key={size.value} value={size.value}>
+                            {size.value}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
+            <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
+              <Button fullWidth onClick={() => setMobileStep(0)}>
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={() => setMobileStep(2)}
+              >
+                Next
+              </Button>
+            </Box>
+          </>
+        )}
+
+        {mobileStep === 2 && (
+          <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              {selectedCustomerData.map((customer) => (
+                <Box
+                  key={customer.id}
+                  sx={{ display: "flex", justifyContent: "space-between", py: 1 }}
+                >
+                  <Typography>{customer.name}</Typography>
+                  <Chip
+                    label={customerSizes[customer.id] || defaultSize}
+                    size="small"
+                    color="primary"
+                  />
+                </Box>
+              ))}
+            </Paper>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button fullWidth onClick={() => setMobileStep(1)} disabled={creating}>
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={creating ? null : <Send />}
+                onClick={handleCreateBookings}
+                disabled={creating}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </Box>
+          </>
+        )}
+
+        {confirmAndSnackbar}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -646,22 +856,7 @@ const BookingsPage = () => {
         }}
       />
 
-      {!sender && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Please configure your sender details before creating bookings.
-        </Alert>
-      )}
-
-      {maxMonthlyBookings !== null && (
-        <Alert
-          severity={monthlyBookingCount >= maxMonthlyBookings ? "error" : "info"}
-          sx={{ mb: 2 }}
-        >
-          {monthlyBookingCount >= maxMonthlyBookings
-            ? `You have used all ${maxMonthlyBookings} bookings for this billing period on your ${subscriptionTier} plan. Upgrade your plan to continue booking.`
-            : `Bookings this billing period: ${monthlyBookingCount} / ${maxMonthlyBookings} used (${remainingBookings} remaining).`}
-        </Alert>
-      )}
+      {alerts}
 
       {showSelectAllBanner && (
         <Alert
@@ -709,56 +904,7 @@ const BookingsPage = () => {
         />
       </Paper>
 
-      <Dialog
-        open={confirmDialog.open}
-        onClose={() => setConfirmDialog({ open: false, customers: [] })}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Confirm Bookings</DialogTitle>
-        <DialogContent>
-          <Typography gutterBottom>
-            You are about to create bookings for the following customers:
-          </Typography>
-          {confirmDialog.customers.map((customer) => (
-            <Box
-              key={customer.id}
-              sx={{ display: "flex", justifyContent: "space-between", py: 1 }}
-            >
-              <Typography>{customer.name}</Typography>
-              <Chip
-                label={customerSizes[customer.id] || defaultSize}
-                size="small"
-                color="primary"
-              />
-            </Box>
-          ))}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setConfirmDialog({ open: false, customers: [] })}
-          >
-            Cancel
-          </Button>
-          <Button onClick={confirmCreateBookings} variant="contained">
-            Confirm & Create
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+      {confirmAndSnackbar}
     </Box>
   );
 };

@@ -16,8 +16,7 @@ import {
   RocketLaunch as RocketLaunchIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
-
-const HOMEPAGE_URL = "https://pudo-booking.web.app";
+import { openExternal, HOMEPAGE_URL } from "../api/openExternal";
 
 export default function SubscriptionExpiredPage() {
   const { user, signOut, refreshProfile, userProfile } = useAuth();
@@ -26,12 +25,7 @@ export default function SubscriptionExpiredPage() {
   const [signingOut, setSigningOut] = useState(false);
 
   const handleOpenHomepage = () => {
-    try {
-      const { shell } = window.require("electron");
-      shell.openExternal(`${HOMEPAGE_URL}/signup`);
-    } catch {
-      window.open(`${HOMEPAGE_URL}/signup`, "_blank");
-    }
+    openExternal(`${HOMEPAGE_URL}/signup`);
   };
 
   const handleRefresh = async () => {

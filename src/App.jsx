@@ -12,13 +12,14 @@ import {
   ListItemIcon,
   ListItemText,
   Box,
-  IconButton,
   useMediaQuery,
   Button,
   CircularProgress,
+  BottomNavigation,
+  BottomNavigationAction,
+  Paper,
 } from "@mui/material";
 import {
-  Menu as MenuIcon,
   People as PeopleIcon,
   Person as PersonIcon,
   LocalShipping as ShippingIcon,
@@ -51,7 +52,6 @@ const DRAWER_WIDTH = 240;
 
 const AppContent = () => {
   const [currentPage, setCurrentPage] = useState("customers");
-  const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { user, signOut, loading, subscriptionValid, pudoApiKey, publicMode } = useAuth();
 
@@ -75,10 +75,6 @@ const AppContent = () => {
     analytics.screen(currentPage);
   }, [loading, user, publicMode, subscriptionValid, pudoApiKey, currentPage]);
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -88,10 +84,10 @@ const AppContent = () => {
   };
 
   const menuItems = [
-    { id: "customers", label: "Customers", icon: <PeopleIcon /> },
-    { id: "sender", label: "Sender Details", icon: <PersonIcon /> },
-    { id: "bookings", label: "Create Bookings", icon: <ShippingIcon /> },
-    { id: "shipments", label: "Shipments", icon: <ReceiptLongIcon /> },
+    { id: "customers", label: "Customers", shortLabel: "Customers", icon: <PeopleIcon /> },
+    { id: "sender", label: "Sender Details", shortLabel: "Sender", icon: <PersonIcon /> },
+    { id: "bookings", label: "Create Bookings", shortLabel: "Bookings", icon: <ShippingIcon /> },
+    { id: "shipments", label: "Shipments", shortLabel: "Shipments", icon: <ReceiptLongIcon /> },
   ];
 
   const renderPage = () => {
@@ -124,9 +120,6 @@ const AppContent = () => {
             selected={currentPage === item.id}
             onClick={() => {
               setCurrentPage(item.id);
-              if (isMobile) {
-                setMobileOpen(false);
-              }
             }}
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
@@ -199,24 +192,16 @@ const AppContent = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: "flex" }}>
+      <Box sx={{ display: "flex", minHeight: "100dvh" }}>
         <AppBar
           position="fixed"
           sx={{
             width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
             ml: { md: `${DRAWER_WIDTH}px` },
+            pt: "env(safe-area-inset-top)",
           }}
         >
           <Toolbar>
-            <IconButton
-              color="inherit"
-              aria-label="open drawer"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { md: "none" } }}
-            >
-              <MenuIcon />
-            </IconButton>
             <Typography
               variant="h6"
               noWrap
@@ -226,15 +211,18 @@ const AppContent = () => {
               {menuItems.find((item) => item.id === currentPage)?.label ||
                 "Pudo Booking App"}
             </Typography>
-            <Typography variant="body2" sx={{ mr: 2 }}>
-              {user.email}
-            </Typography>
+            {!isMobile && (
+              <Typography variant="body2" sx={{ mr: 2 }}>
+                {user.email}
+              </Typography>
+            )}
             <Button
               color="inherit"
               onClick={handleSignOut}
               startIcon={<LogoutIcon />}
+              size={isMobile ? "small" : "medium"}
             >
-              Sign Out
+              {isMobile ? "Out" : "Sign Out"}
             </Button>
           </Toolbar>
         </AppBar>
@@ -243,23 +231,6 @@ const AppContent = () => {
           component="nav"
           sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}
         >
-          <Drawer
-            variant="temporary"
-            open={mobileOpen}
-            onClose={handleDrawerToggle}
-            ModalProps={{
-              keepMounted: true,
-            }}
-            sx={{
-              display: { xs: "block", md: "none" },
-              "& .MuiDrawer-paper": {
-                boxSizing: "border-box",
-                width: DRAWER_WIDTH,
-              },
-            }}
-          >
-            {drawer}
-          </Drawer>
           <Drawer
             variant="permanent"
             sx={{
@@ -280,11 +251,42 @@ const AppContent = () => {
           sx={{
             flexGrow: 1,
             width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-            mt: 8,
+            mt: { xs: "calc(56px + env(safe-area-inset-top))", md: 8 },
+            mb: { xs: "calc(56px + env(safe-area-inset-bottom))", md: 0 },
+            minHeight: 0,
           }}
         >
           {renderPage()}
         </Box>
+
+        {isMobile && (
+          <Paper
+            elevation={8}
+            sx={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pb: "env(safe-area-inset-bottom)",
+              zIndex: (t) => t.zIndex.appBar,
+            }}
+          >
+            <BottomNavigation
+              showLabels
+              value={currentPage}
+              onChange={(_, value) => setCurrentPage(value)}
+            >
+              {menuItems.map((item) => (
+                <BottomNavigationAction
+                  key={item.id}
+                  label={item.shortLabel}
+                  value={item.id}
+                  icon={item.icon}
+                />
+              ))}
+            </BottomNavigation>
+          </Paper>
+        )}
       </Box>
     </ThemeProvider>
   );

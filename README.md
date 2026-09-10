@@ -1,6 +1,6 @@
 # Pudo Booking Desktop App
 
-A cross-platform desktop application for managing Pudo package bookings and customers, built with Electron, React, and Firebase.
+A cross-platform application for managing Pudo package bookings and customers, built with Electron (desktop), Capacitor (iOS/Android), React, and Firebase. Subscribers can also use the same app in the browser at [pudo-booking.web.app/app](https://pudo-booking.web.app/app/).
 
 ## Features
 
@@ -128,6 +128,11 @@ All customer data, sender information, and booking records are stored in Firebas
 3. **Build Issues**
    - Clear node_modules and reinstall: `rm -rf node_modules && npm install`
    - Check that all dependencies are properly installed
+
+## Web and mobile
+
+- **Web (subscribers):** `npm run build:web` then embed into the homepage (`STORE_SHIPPING.md`).
+- **iOS / Android:** Capacitor projects live in `ios/` and `android/`. See `STORE_SHIPPING.md`.
 
 ## License
 

@@ -167,6 +167,15 @@ const LoginPage = () => {
                 "Sign Up"
               )}
             </Button>
+            <Button
+              fullWidth
+              href="https://pudo-booking.web.app/signup"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ mb: 1 }}
+            >
+              Subscribe or manage billing
+            </Button>
           </Box>
         </Paper>
       </Box>

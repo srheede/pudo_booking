@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, CircularProgress } from "@mui/material";
-import config from "../../config.json";
 import { useAuth } from "../contexts/AuthContext";
-
-// Helper function to get Authorization header
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${config.PUDO_API_KEY}`,
-  "Content-Type": "application/json",
-  Accept: "application/json",
-});
-
-const ipcRenderer = window.require
-  ? window.require("electron").ipcRenderer
-  : null;
+import { getAllTerminals } from "../api/pudoClient";
 
 // Cache for lockers data
 let lockersCache = null;
@@ -58,29 +47,7 @@ const LockerAutocomplete = ({
 
       setLoading(true);
       try {
-        let terminals;
-
-        if (!ipcRenderer) {
-          // Browser mode: make direct API call
-          const apiKey = publicMode ? pudoApiKey : config.PUDO_API_KEY;
-          const response = await fetch(`${config.API_BASE_URL}/lockers-data`, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          terminals = await response.json();
-        } else {
-          // Electron mode: use IPC
-          terminals = await ipcRenderer.invoke("get-all-terminals");
-        }
+        const terminals = await getAllTerminals();
 
         if (!terminals || !Array.isArray(terminals)) {
           console.error("Invalid terminals response:", terminals);
