@@ -1,6 +1,6 @@
 {
   "name": "pudo-booking-app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Desktop app for managing Pudo bookings and customers",
   "main": "src/main.js",
   "scripts": {

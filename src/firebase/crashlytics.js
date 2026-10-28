@@ -34,33 +34,52 @@ const getIpc = () => getIpcRenderer();
 
 const serializeError = (error) => {
   if (!error) return { message: "Unknown error" };
-  if (typeof error === "string") return { message: error };
-  return {
-    message: error.message || String(error),
+  if (typeof error === "string") {
+    return { message: error.slice(0, 2400) };
+  }
+  // Firestore addDoc rejects `undefined` fields, which previously dropped
+  // every report that had no error.code (including PUDO booking failures).
+  const report = {
+    message: String(error.message || error).slice(0, 2400),
     name: error.name || "Error",
-    stack: error.stack ? String(error.stack).slice(0, 8000) : undefined,
-    code: error.code,
   };
+  if (error.stack) report.stack = String(error.stack).slice(0, 4000);
+  if (error.code != null && error.code !== "") report.code = String(error.code);
+  return report;
 };
 
-const buildReport = (error, context = {}) => ({
-  ...serializeError(error),
-  app: getAppName(),
-  source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
-  context: {
-    ...context,
-    platform: typeof process !== "undefined" ? process.platform : "unknown",
-    userAgent:
-      typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-    publicMode: config.PUBLIC_MODE === true,
-    internalSession: isInternalSession === true,
-    appVersion: APP_VERSION,
-  },
-  userId: currentUserId || null,
-  userEmail: currentUserEmail || null,
-  createdAt: serverTimestamp(),
-  clientTime: new Date().toISOString(),
-});
+const omitUndefined = (value) => {
+  if (Array.isArray(value)) return value.map(omitUndefined);
+  if (!value || typeof value !== "object" || value.constructor !== Object) {
+    return value;
+  }
+  const out = {};
+  Object.entries(value).forEach(([key, entry]) => {
+    if (entry === undefined) return;
+    out[key] = omitUndefined(entry);
+  });
+  return out;
+};
+
+const buildReport = (error, context = {}) =>
+  omitUndefined({
+    ...serializeError(error),
+    app: getAppName(),
+    source: isInternalSession || config.PUBLIC_MODE !== true ? "internal" : "public",
+    context: {
+      ...context,
+      platform: typeof process !== "undefined" ? process.platform : "unknown",
+      userAgent:
+        typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      publicMode: config.PUBLIC_MODE === true,
+      internalSession: isInternalSession === true,
+      appVersion: APP_VERSION,
+    },
+    userId: currentUserId || null,
+    userEmail: currentUserEmail || null,
+    createdAt: serverTimestamp(),
+    clientTime: new Date().toISOString(),
+  });
 
 const persistReport = async (report) => {
   try {

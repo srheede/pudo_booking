@@ -33,6 +33,8 @@ import SubscriptionExpiredPage from "./pages/SubscriptionExpiredPage.jsx";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { analytics } from "./firebase/analytics";
 import ThemeToggle from "./components/ThemeToggle.jsx";
+import BugReportButton from "./components/BugReportButton.jsx";
+import { version as APP_VERSION } from "../package.json";
 
 const DRAWER_WIDTH = 240;
 
@@ -184,6 +186,9 @@ const AppContent = () => {
               {menuItems.find((item) => item.id === currentPage)?.label ||
                 "Pudo Booking App"}
             </Typography>
+            <Typography variant="caption" sx={{ mr: 2, opacity: 0.8 }}>
+              v{APP_VERSION}
+            </Typography>
             {!isMobile && (
               <Typography variant="body2" sx={{ mr: 2 }}>
                 {user.email}
@@ -233,6 +238,7 @@ const AppContent = () => {
           }}
         >
           {renderPage()}
+          <BugReportButton />
         </Box>
 
         {isMobile && (

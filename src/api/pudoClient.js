@@ -68,6 +68,14 @@ export async function getAllTerminals() {
   return proxyRequest({ path: "/lockers-data" });
 }
 
+export async function getRates(payload) {
+  const ipc = getIpcRenderer();
+  if (ipc) {
+    return ipc.invoke("get-rates", payload);
+  }
+  return proxyRequest({ method: "POST", path: "/rates", body: payload });
+}
+
 export async function createShipment(payload) {
   const ipc = getIpcRenderer();
   if (ipc) {

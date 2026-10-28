@@ -42,11 +42,16 @@ import { analytics } from "../firebase/analytics";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getAllTerminals,
+  getRates,
   createShipment,
   terminalsToMaps,
   formatDeliveryLocation,
   deliveryTypeChip,
 } from "../api/pudoClient";
+import {
+  explainBookingFailure,
+  isBalanceError,
+} from "../api/bookingErrors";
 import { notifyEcommerceBookingCreated } from "../api/notifyEcommerceBooking";
 
 const LOCKER_SIZES = [
@@ -343,6 +348,32 @@ const BookingsPage = () => {
             service_level_code: serviceCode,
           };
 
+          // Quote first so a low PUDO balance is explained with the price,
+          // instead of looking like another Windows door-booking bug.
+          try {
+            const quote = await getRates({
+              collection_address: collectionAddress,
+              delivery_address: deliveryAddress,
+            });
+            const match = Array.isArray(quote?.rates)
+              ? quote.rates.find((rate) => rate?.service_level?.code === serviceCode)
+              : null;
+            if (match?.can_book?.status === false) {
+              const balanceError = new Error(
+                match.can_book.message || "Cannot process shipment."
+              );
+              balanceError.pudoType = match.can_book.type;
+              balanceError.rate = match.rate;
+              balanceError.serviceCode = serviceCode;
+              throw balanceError;
+            }
+          } catch (rateError) {
+            if (isBalanceError(rateError.message) || rateError.pudoType) {
+              throw rateError;
+            }
+            console.warn("Rate check failed, continuing to create shipment", rateError);
+          }
+
           const shipmentResult = await createShipment(payload);
 
           // Save booking to Firebase
@@ -373,12 +404,16 @@ const BookingsPage = () => {
           });
         } catch (error) {
           console.error(`Error creating booking for ${customer.name}:`, error);
+          const friendly = explainBookingFailure(error);
           crashlytics.recordError(error, {
             source: "create-booking",
             customerId: customer.id,
             customerName: customer.name,
             deliveryType: customer.deliveryType,
             senderType: sender?.deliveryType,
+            serviceCode: error.serviceCode || null,
+            rate: error.rate || null,
+            pudoType: error.pudoType || null,
             hasLat: customer.address?.lat != null,
             hasLng: customer.address?.lng != null,
             zone: customer.address?.province
@@ -388,7 +423,7 @@ const BookingsPage = () => {
           results.push({
             customer: customer.name,
             success: false,
-            error: error.message,
+            error: friendly,
           });
         }
       }

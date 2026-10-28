@@ -15,6 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { analytics } from "../firebase/analytics";
 import { crashlytics } from "../firebase/crashlytics";
 import ThemeToggle from "../components/ThemeToggle.jsx";
+import { version as APP_VERSION } from "../../package.json";
 
 const getFriendlyAuthError = (error) => {
   switch (error.code) {
@@ -189,6 +190,9 @@ const LoginPage = () => {
             >
               Subscribe or manage billing
             </Button>
+            <Typography variant="caption" color="text.secondary">
+              Version {APP_VERSION}
+            </Typography>
           </Box>
         </Paper>
       </Box>

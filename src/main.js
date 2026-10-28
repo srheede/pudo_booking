@@ -206,6 +206,18 @@ ipcMain.handle("search-terminals", async (event, query) => {
   }
 });
 
+ipcMain.handle("get-rates", async (event, payload) => {
+  try {
+    return await pudoFetch(`${config.API_BASE_URL}/rates`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: payload,
+    });
+  } catch (error) {
+    throwIpcError(error, "Error getting rates");
+  }
+});
+
 ipcMain.handle("create-shipment", async (event, payload) => {
   try {
     return await pudoFetch(`${config.API_BASE_URL}/shipments`, {
@@ -313,6 +325,42 @@ async function combineWaybillPdfs(pdfBuffers) {
 
   return combinedDoc.save();
 }
+
+const DEV_TICKET_ENDPOINT =
+  "https://ecommerce-backend-wpzvfp2i7q-ey.a.run.app/graphql/gengar_games/";
+
+ipcMain.handle("submit-dev-ticket", async (_event, description) => {
+  const text = String(description || "").trim();
+  if (text.length < 8) {
+    throw new Error("Say what went wrong in a sentence or two.");
+  }
+  const response = await net.fetch(DEV_TICKET_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      query: `mutation CreateDevTicket($ticketType: String!, $description: String!, $pageUrl: String, $surface: String, $userAgent: String, $viewport: String) {
+        createDevTicket(ticketType: $ticketType, description: $description, pageUrl: $pageUrl, surface: $surface, userAgent: $userAgent, viewport: $viewport) {
+          ticket { id }
+        }
+      }`,
+      variables: {
+        ticketType: "bug",
+        description: `Pudo booking app: ${text}`,
+        pageUrl: "pudo-booking://app",
+        surface: "storefront",
+        userAgent: "pudo-booking-electron",
+        viewport: "",
+      },
+    }),
+  });
+  const body = await response.json();
+  const message = body?.errors?.[0]?.message;
+  const id = body?.data?.createDevTicket?.ticket?.id;
+  if (!response.ok || message || !id) {
+    throw new Error(message || "Could not send the report.");
+  }
+  return { id };
+});
 
 ipcMain.handle("download-waybills-combined", async (event, shipments) => {
   try {
