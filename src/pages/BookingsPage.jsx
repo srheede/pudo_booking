@@ -288,8 +288,13 @@ const BookingsPage = () => {
       const results = [];
 
       for (const customer of selectedCustomerData) {
+        const size = customerSizes[customer.id] || defaultSize;
+        const serviceCode = getServiceCode(
+          sender.deliveryType,
+          customer.deliveryType,
+          size
+        );
         try {
-          const size = customerSizes[customer.id] || defaultSize;
 
           // Door/address destinations need a complete zone-capable address.
           if (customer.deliveryType === "address") {
@@ -323,12 +328,6 @@ const BookingsPage = () => {
               : customer.deliveryType === "kiosk"
               ? { terminal_id: customer.kioskId }
               : buildAddressObject(customer.address);
-
-          const serviceCode = getServiceCode(
-            sender.deliveryType,
-            customer.deliveryType,
-            size
-          );
 
           const payload = {
             collection_address: collectionAddress,
@@ -405,20 +404,31 @@ const BookingsPage = () => {
         } catch (error) {
           console.error(`Error creating booking for ${customer.name}:`, error);
           const friendly = explainBookingFailure(error);
-          crashlytics.recordError(error, {
+          const rawMessage = String(error?.message || "Booking failed").slice(0, 500);
+          await analytics.event("booking_failed", {
+            deliveryType: customer.deliveryType || "",
+            senderType: sender?.deliveryType || "",
+            lockerSize: size,
+            serviceCode: error.serviceCode || serviceCode,
+            pudoType: error.pudoType || "",
+            rate: error.rate != null ? String(error.rate) : "",
+            message: rawMessage,
+          });
+          await crashlytics.recordError(error, {
             source: "create-booking",
             customerId: customer.id,
             customerName: customer.name,
             deliveryType: customer.deliveryType,
             senderType: sender?.deliveryType,
-            serviceCode: error.serviceCode || null,
-            rate: error.rate || null,
-            pudoType: error.pudoType || null,
+            serviceCode: error.serviceCode || serviceCode,
+            rate: error.rate != null ? String(error.rate) : "",
+            pudoType: error.pudoType || "",
+            message: rawMessage,
             hasLat: customer.address?.lat != null,
             hasLng: customer.address?.lng != null,
             zone: customer.address?.province
               ? toZoneCode(customer.address.province)
-              : null,
+              : "",
           });
           results.push({
             customer: customer.name,
