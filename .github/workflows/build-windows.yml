@@ -239,7 +239,11 @@ jobs:
             };
 
             if (isPublic) {
-              config.INTERNAL_FIREBASE = buildInternalFirebase();
+              const internalFirebase = buildInternalFirebase();
+              // pudo-booking is scheduled for deletion; its API key is no longer valid.
+              if (internalFirebase.projectId && internalFirebase.projectId !== 'pudo-booking') {
+                config.INTERNAL_FIREBASE = internalFirebase;
+              }
             }
 
             require('fs').writeFileSync('config.json', JSON.stringify(config, null, 2));

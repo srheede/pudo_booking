@@ -87,7 +87,8 @@ if (config.INTERNAL_FIREBASE?.apiKey) {
   const internalMissing = ["apiKey", "authDomain", "projectId"].filter(
     (k) => !config.INTERNAL_FIREBASE[k]
   );
-  if (internalMissing.length === 0) {
+  const internalProjectGone = config.INTERNAL_FIREBASE.projectId === "pudo-booking";
+  if (internalMissing.length === 0 && !internalProjectGone) {
     internalApp = initializeApp(config.INTERNAL_FIREBASE, "internal");
     // Internal project always uses the "(default)" Firestore database.
     internalDb = getFirestore(internalApp);
