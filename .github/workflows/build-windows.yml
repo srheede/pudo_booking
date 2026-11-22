@@ -17,7 +17,7 @@ name: Build Windows Executable
 #    • Subscription status is read from Firestore on every login.
 #    • Uses the PUBLIC Firebase project (set via PUBLIC_FIREBASE_* secrets),
 #      which may use a named Firestore database (PUBLIC_FIREBASE_DATABASE_ID).
-#    • The installer is uploaded to Firebase Storage as well as a GitHub artifact.
+#    • The installer is uploaded to billed GCS as well as a GitHub artifact.
 #
 # ──────────────────────────────────────────────────────────────────────────────
 # SECRETS REQUIRED FOR EVERY BUILD:
@@ -26,7 +26,7 @@ name: Build Windows Executable
 #   GOOGLE_MAPS_API_KEY                — Google Maps API key
 #
 # ADDITIONAL SECRET FOR PUBLIC BUILDS ONLY:
-#   FIREBASE_SERVICE_ACCOUNT_JSON      — see note at end of this header block
+#   FIREBASE_SERVICE_ACCOUNT_JSON      — github-ci-uploader key; writes billed GCS downloads
 #
 # SECRETS FOR INTERNAL MODE (PUBLIC_MODE=false):
 #   PUDO_API_KEY                       — Pudo API key baked into the app
@@ -54,11 +54,9 @@ name: Build Windows Executable
 #   FIREBASE_*                         — Internal Firebase credentials (as INTERNAL_FIREBASE)
 #
 # FIREBASE_SERVICE_ACCOUNT_JSON (PUBLIC builds only)
-#   Google Cloud service account key for GitHub Actions to upload installers to
-#   Firebase Storage in the PUBLIC project. Not used by the app at runtime.
-#   Create in GCP Console → project "pudo-booking-pub" → IAM → Service Accounts
-#   → Keys → JSON. Grant Storage write on the download bucket. Same details as
-#   build-mac.yml header. Internal builds skip upload and do not need this secret.
+#   Key for github-ci-uploader@pudo-booking-pub. Not used by the app at runtime.
+#   Needs objectAdmin on gs://multi-ecommerce-backend-pudo-downloads. Same as
+#   build-mac.yml. Internal builds skip upload and do not need this secret.
 # ──────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -233,6 +231,9 @@ jobs:
               PUDO_API_KEY: e.CFG_PUDO_API_KEY || '',
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
+              PUDO_PROXY_URL: isPublic && firebase.projectId
+                ? `https://africa-south1-${firebase.projectId}.cloudfunctions.net/pudoProxy`
+                : '',
               INTERNAL_EMAILS: internalEmails,
               FIREBASE: firebase,
             };
@@ -269,11 +270,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Upload installer to Firebase Storage
+      - name: Upload installer to GCS
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp-Setup.exe
-          destination: pudo-booking-pub.firebasestorage.app/downloads/windows
+          destination: multi-ecommerce-backend-pudo-downloads/downloads/windows
           gzip: false
           headers: |-
             cache-control: no-cache, no-store, must-revalidate

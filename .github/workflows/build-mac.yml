@@ -17,7 +17,7 @@ name: Build macOS Executable
 #    • Subscription status is read from Firestore on every login.
 #    • Uses the PUBLIC Firebase project (set via PUBLIC_FIREBASE_* secrets),
 #      which may use a named Firestore database (PUBLIC_FIREBASE_DATABASE_ID).
-#    • The DMG is uploaded to Firebase Storage as well as a GitHub artifact.
+#    • The DMG is uploaded to billed GCS as well as a GitHub artifact.
 #
 # ──────────────────────────────────────────────────────────────────────────────
 # SECRETS REQUIRED FOR EVERY BUILD:
@@ -25,8 +25,8 @@ name: Build macOS Executable
 #   API_BASE_URL                       — https://api-pudo.co.za/api/v1
 #   GOOGLE_MAPS_API_KEY                — Google Maps API key
 #
-# ADDITIONAL SECRET FOR PUBLIC BUILDS ONLY (installer upload to Firebase Storage):
-#   FIREBASE_SERVICE_ACCOUNT_JSON      — see "FIREBASE_SERVICE_ACCOUNT_JSON" note below
+# ADDITIONAL SECRET FOR PUBLIC BUILDS ONLY (installer upload to billed GCS):
+#   FIREBASE_SERVICE_ACCOUNT_JSON      — github-ci-uploader key; writes billed GCS downloads
 #
 # SECRETS FOR INTERNAL MODE (PUBLIC_MODE=false):
 #   PUDO_API_KEY                       — Pudo API key baked into the app
@@ -54,16 +54,9 @@ name: Build macOS Executable
 #   FIREBASE_*                         — Internal Firebase credentials (as INTERNAL_FIREBASE)
 #
 # FIREBASE_SERVICE_ACCOUNT_JSON (PUBLIC builds only)
-#   This is NOT the same as the Firebase web config (apiKey, appId, …).
-#   It is a Google Cloud service account key used only by GitHub Actions to
-#   upload the built DMG to Firebase Storage in the PUBLIC project.
-#   • Create it in Google Cloud Console → select project "pudo-booking-pub"
-#     (same GCP project as your public Firebase app).
-#   • IAM & Admin → Service Accounts → create or pick an account → Keys → Add key → JSON.
-#   • Grant the account a role that can write objects to your download bucket,
-#     e.g. "Storage Object Admin" on the bucket, or "Firebase Admin" for simplicity.
-#   • Paste the entire JSON file contents into the GitHub secret.
-#   Internal builds (PUBLIC_MODE=false) skip Storage upload and do not need this secret.
+#   Key for github-ci-uploader@pudo-booking-pub. Not used by the app at runtime.
+#   Needs objectAdmin on gs://multi-ecommerce-backend-pudo-downloads.
+#   Internal builds skip upload and do not need this secret.
 # ──────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -237,6 +230,9 @@ jobs:
               PUDO_API_KEY: e.CFG_PUDO_API_KEY || '',
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
+              PUDO_PROXY_URL: isPublic && firebase.projectId
+                ? `https://africa-south1-${firebase.projectId}.cloudfunctions.net/pudoProxy`
+                : '',
               INTERNAL_EMAILS: internalEmails,
               FIREBASE: firebase,
             };
@@ -276,11 +272,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Upload DMG to Firebase Storage
+      - name: Upload DMG to GCS
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: dist/PudoBookingApp.dmg
-          destination: pudo-booking-pub.firebasestorage.app/downloads/mac
+          destination: multi-ecommerce-backend-pudo-downloads/downloads/mac
           gzip: false
           headers: |-
             cache-control: no-cache, no-store, must-revalidate
