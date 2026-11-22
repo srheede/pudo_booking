@@ -232,7 +232,7 @@ jobs:
               API_BASE_URL: e.CFG_API_BASE_URL,
               GOOGLE_MAPS_API_KEY: e.CFG_GOOGLE_MAPS_API_KEY,
               PUDO_PROXY_URL: isPublic && firebase.projectId
-                ? `https://africa-south1-${firebase.projectId}.cloudfunctions.net/pudoProxy`
+                ? ('https://africa-south1-' + firebase.projectId + '.cloudfunctions.net/pudoProxy')
                 : '',
               INTERNAL_EMAILS: internalEmails,
               FIREBASE: firebase,
