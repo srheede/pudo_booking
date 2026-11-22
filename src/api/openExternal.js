@@ -1,6 +1,6 @@
 import { isElectron, isCapacitor } from "./platform";
 
-const HOMEPAGE_URL = "https://pudo-booking.web.app";
+const HOMEPAGE_URL = "https://pudo-booking-pub.web.app";
 
 export { HOMEPAGE_URL };
 

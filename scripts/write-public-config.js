@@ -21,8 +21,6 @@ const firebase = {
 
 if (e.PUBLIC_FIREBASE_DATABASE_ID) {
   firebase.databaseId = e.PUBLIC_FIREBASE_DATABASE_ID;
-} else if (!firebase.databaseId) {
-  firebase.databaseId = "pudo-booking-pub";
 }
 
 const missing = ["apiKey", "authDomain", "projectId"].filter((k) => !firebase[k]);
@@ -35,12 +33,16 @@ Object.keys(firebase).forEach((k) => {
   if (!firebase[k]) delete firebase[k];
 });
 
+const projectId = firebase.projectId;
 const config = {
   PUBLIC_MODE: true,
   PUDO_API_KEY: "",
   API_BASE_URL: e.API_BASE_URL || "https://api-pudo.co.za/api/v1",
   ECOMMERCE_BOOKING_URL: e.ECOMMERCE_BOOKING_URL || "",
   GOOGLE_MAPS_API_KEY: e.GOOGLE_MAPS_API_KEY || "",
+  PUDO_PROXY_URL:
+    e.PUDO_PROXY_URL ||
+    (projectId ? `https://africa-south1-${projectId}.cloudfunctions.net/pudoProxy` : ""),
   INTERNAL_EMAILS: [],
   FIREBASE: firebase,
 };

@@ -10,9 +10,11 @@ import { auth } from "../firebase/config";
 import { getIpcRenderer } from "./platform";
 import { combineWaybillPdfs, waybillFilename } from "./combineWaybills";
 import { savePdf } from "./savePdf";
+import config from "../../config.json";
 
 const PROXY_BASE =
-  "https://africa-south1-pudo-booking-pub.cloudfunctions.net/pudoProxy";
+  config.PUDO_PROXY_URL ||
+  `https://africa-south1-${config.FIREBASE?.projectId}.cloudfunctions.net/pudoProxy`;
 
 async function getIdToken() {
   const user = auth.currentUser;
